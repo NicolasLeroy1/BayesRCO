@@ -35,3 +35,6 @@
 
 # Temporary files
 temp/
+
+# Build artifacts
+build/
