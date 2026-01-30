@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-source("src_R/bayesRCpi.R")
+source("src_R_mimic/bayesR_mimic.R")
 
 # Help/Arg parser
 args <- commandArgs(trailingOnly = TRUE)
@@ -59,7 +59,7 @@ X_processed <- matrix(0, nrow = length(y_train), ncol = nloci)
 
 for (j in 1:nloci) {
   # Flip from genio's default (A1 dosage) to project default (A2 dosage)
-  snp_vals <- 2 - X_train[j, ] 
+  snp_vals <- X_train[j, ] 
   
   no_miss_mask <- !is.na(snp_vals)
   
@@ -116,7 +116,7 @@ if (cat_file != "" && file.exists(cat_file)) {
     snp_categories <- replicate(nloci, as.integer(c(1)), simplify = FALSE)
 }
 
-# --- Run Kernel ---
+# --- Run Mimic Kernel ---
 config <- list(
   num_iterations = num_it,
   num_distributions = 4,
@@ -127,7 +127,7 @@ config <- list(
   dirichlet_prior_counts = rep(1.0, 4)
 )
 
-results <- run_bayesRCpi_mcmc(y_train, X_processed, snp_categories, config)
+results <- run_bayesR_mimic_mcmc(y_train, X_processed, snp_categories, config)
 
 # Save hyperparameter chains to match verify.sh expected format
 hyp_file <- paste0(out_prefix, ".hyp")
@@ -139,5 +139,4 @@ hyp_data <- data.frame(
 )
 write.table(hyp_data, file = hyp_file, quote = FALSE, row.names = FALSE, sep = " ")
 cat("Hyperparameter chains saved to:", hyp_file, "\n")
-
-cat("R version run complete.\n")
+cat("R Mimic version run complete.\n")

@@ -1,68 +1,49 @@
-#' Pure Statistical Kernel for BayesRCpi (Modular & Documented)
-#' 
-#' --- Total Prior Law ---
-#' The model is: y = mu + Xg + e, with e ~ N(0, sigma_e^2 * I)
-#' 
-#' 1. Intercept: mu ~ Flat
-#' 2. SNP Effects: g_k | d_k = d, sigma_a^2 ~ Normal(0, sigma_a^2 * scale_d)
-#' 3. Distribution Assignment: d_k | category = c ~ Categorical(pi_c)
-#' 4. Mixture Proportions: pi_c ~ Dirichlet(delta)
-#' 5. Genetic Variance: sigma_a^2 ~ Inverse-Gamma(alpha_a, beta_a)
-#' 6. Residual Variance: sigma_e^2 ~ Scaled-Inverse-Chi2(df_e, S_e)
-#' -------------------------
-#' 
-#' This file implements a Gibbs sampler for Bayesian Multiple Regression
-#' with Annotation-Specific Mixture Proportions (RCO).
+#' BayesR Mimic Kernel (Mimics Old Fortran)
+#'
+#' This file implements a Gibbs sampler designed to replicate the specific
+#' statistical behavior of the 'Old Fortran' implementation of BayesRCO.
+#'
+#' KEY DIFFERENCES from standard BayesRC:
+#' 1. Genetic Variance (Va) update uses SIMPLE Sum of Squares (sum(g^2))
+#'    instead of Weighted Sum of Squares (sum(g^2 / gamma)).
+#' 2. Residual Variance (Ve) update uses df = N - 2 instead of N + 3.
+#'
 
 # --- Statistical Helper Functions ---
 
-# Sample from Inverse Gamma distribution
 sample_inverse_gamma <- function(n, shape, scale) {
   1.0 / rgamma(n, shape, rate = scale)
 }
 
-# Sample from Dirichlet distribution
 sample_dirichlet <- function(alpha_counts) {
   gamma_samples <- rgamma(length(alpha_counts), alpha_counts, 1.0)
   return(gamma_samples / sum(gamma_samples))
 }
 
-# --- Parameter Update Functions ---
+# --- Parameter Update Functions (MIMIC MODE) ---
 
-#' Update Residual Variance (sigma_e^2)
-#' @description 
-#' Law: sigma_e^2 | y, mu, g ~ Scaled Inverse Chi-Square(n_ind + 3, RSS)
-#' where RSS = sum( (y - mu - Xg)^2 )
-update_residual_variance <- function(residuals, num_individuals) {
+#' Update Residual Variance (Mimic)
+#' Law: sigma_e^2 | ... ~ Scaled-Inv-Chi2( n_ind + df_fixed, RSS )
+#' Fortran dfvare defaults to -2.
+update_residual_variance_mimic <- function(residuals, num_individuals) {
   sum_squared_residuals <- sum(residuals^2)
-  return(sum_squared_residuals / rchisq(1, df = num_individuals + 3))
+  # Mimic Fortran: df = n_ind + dfvare (where dfvare = -2)
+  df_eff <- num_individuals - 2.0
+  return(sum_squared_residuals / rchisq(1, df = df_eff))
 }
 
-#' Update Intercept (mu)
-#' @description 
-#' Law: mu | y, g, sigma_e^2 ~ Normal( mean(y - Xg), sigma_e^2 / n_ind )
+#' Update Intercept (Standard)
 update_intercept <- function(residuals, intercept, residual_variance, num_individuals) {
   y_adj <- residuals + intercept
-  
   intercept_mean <- mean(y_adj)
   intercept_sd   <- sqrt(residual_variance / num_individuals)
   new_intercept  <- rnorm(1, mean = intercept_mean, sd = intercept_sd)
-  
-  return(list(
-    value = new_intercept,
-    residuals = y_adj - new_intercept
-  ))
+  return(list(value = new_intercept, residuals = y_adj - new_intercept))
 }
 
-#' Update SNP Effects (g_k) and Distribution Assignments (d_k)
-#' @description 
-#' Handles Overlapping Annotations (BayesRCpi):
-#' 1. For SNP k, retrieve set of possible annotations S_k.
-#' 2. Calculate Joint Probability P(A_k=a, C_k=c | Data) proportional to:
-#'    Likelihood(Data | C_k=c) * pi_{a,c}
-#' 3. Sample pair (a_new, c_new).
-#' 
-#' @param snp_category_list List where the k-th element is an integer vector of annotation indices for SNP k.
+#' Update SNP Effects (Standard BayesRCpi logic)
+#' Note: We keep the "Overlapping" sampling logic from R because it's superior/cleaner,
+#' provided that with the Mimic Variance updates, the results align.
 update_snp_effects <- function(residuals, snp_effects, genotype_matrix, snp_category_list, 
                                snp_diagonal_xpx, mixture_proportions, mixture_variances, 
                                residual_variance, noise_to_signal_ratios, config) {
@@ -72,7 +53,8 @@ update_snp_effects <- function(residuals, snp_effects, genotype_matrix, snp_cate
   num_categories  <- ncol(mixture_proportions)
   
   snp_counts_per_dist_cat <- matrix(0, nrow = num_dists, ncol = num_categories)
-  sum_sq_weighted_effects  <- matrix(0, nrow = num_dists, ncol = num_categories)
+  # For Mimic: We track SIMPLE Sum of Squares (g^2) 
+  sum_sq_simple_effects  <- matrix(0, nrow = num_dists, ncol = num_categories)
   
   shuffled_snps <- sample(1:num_snps)
   
@@ -112,8 +94,6 @@ update_snp_effects <- function(residuals, snp_effects, genotype_matrix, snp_cate
     # Flatten probability calculation for (d, a) pairs
     # log_probs = L(d) + log(pi_{d,a})
     # We can compute this using outer product-like logic or simpler vectorized addition
-    # But since we iterate 'possible_annotations', doing it per annotation is robust.
-    # Optimization: Calculate log_likelihoods ONCE (done above), then add log_pi
     
     # Pre-allocate if num_opts is large, but usually small (dists * n_annot)
     # Using matrix formulation for selecting
@@ -147,8 +127,8 @@ update_snp_effects <- function(residuals, snp_effects, genotype_matrix, snp_cate
       new_gk <- rnorm(1, mean = cond_means[selected_dist_idx], sd = sqrt(cond_vars[selected_dist_idx]))
       residuals <- residuals - snp_column * new_gk
       
-      sum_sq_weighted_effects[selected_dist_idx, selected_annot] <- sum_sq_weighted_effects[selected_dist_idx, selected_annot] + 
-        (new_gk^2 / mixture_variances[selected_dist_idx])
+      # MIMIC: Accumulate SIMPLE g^2, NOT weighted g^2/gamma
+      sum_sq_simple_effects[selected_dist_idx, selected_annot] <- sum_sq_simple_effects[selected_dist_idx, selected_annot] + new_gk^2
     }
     
     snp_effects[k] <- new_gk
@@ -159,41 +139,46 @@ update_snp_effects <- function(residuals, snp_effects, genotype_matrix, snp_cate
     snp_effects = snp_effects,
     residuals = residuals,
     counts = snp_counts_per_dist_cat,
-    weighted_ss = sum_sq_weighted_effects
+    simple_ss = sum_sq_simple_effects
   ))
 }
 
-#' Update Genetic Variance (sigma_a^2)
-#' @description 
-#' Law: sigma_a^2 | g, d ~ Inverse-Gamma( shape_post, scale_post )
-update_genetic_variance <- function(snp_counts_per_dist_cat, sum_sq_weighted_effects, config) {
+#' Update Genetic Variance (Mimic)
+#' Law: sigma_a^2 | ... ~ Scaled-Inv-Chi2
+#' Fortran logic:
+#' scale = ( included * sum(g**2 / 1.0??) ) / (included + df)
+#' Wait, Fortran code:
+#' scale=(dble(included)*sum(g**2) + vara_ap*dfvara)/(dfvara+dble(included))
+#' vara=rand_scaled_inverse_chi_square(dble(included)+dfvara,scale)
+#' 
+#' This implies it treats ALL effects as if they come from the SAME distribution with variance 'vara',
+#' effectively ignoring the gamma scaling in the posterior update of vara itself.
+update_genetic_variance_mimic <- function(snp_counts_per_dist_cat, sum_sq_simple_effects, config) {
   num_dists <- nrow(snp_counts_per_dist_cat)
   
-  total_snps_included <- sum(snp_counts_per_dist_cat[2:num_dists, ])
-  total_weighted_ss   <- sum(sum_sq_weighted_effects[2:num_dists, ])
+  total_snps_included <- sum(snp_counts_per_dist_cat[2:num_dists, ]) # Sum of non-null counts
+  total_simple_ss     <- sum(sum_sq_simple_effects[2:num_dists, ])   # Sum of g^2
   
-  if (config$genetic_variance_df > 0.0) {
-    ig_shape <- 0.5 * (total_snps_included + config$genetic_variance_df)
-    ig_scale <- 0.5 * (config$initial_genetic_variance * config$genetic_variance_df + total_weighted_ss)
-    return(sample_inverse_gamma(1, ig_shape, ig_scale))
+  df_prior <- -2.0
+  prior_scale <- 0.0 # because df=-2 implies uninformative
+  
+  # Effective DF and Scale
+  # If df=-2, let's assume it behaves like N-2.
+  df_post <- total_snps_included + df_prior
+  
+  numerator <- total_snps_included * total_simple_ss # The 'bug' replication
+
+  
+  if (df_post > 0) {
+    return(numerator / rchisq(1, df_post))
   } else {
-    ig_shape <- 0.5 * total_snps_included
-    ig_scale <- 0.5 * total_weighted_ss
-    if (ig_shape > 0.0) {
-      return(sample_inverse_gamma(1, ig_shape, ig_scale))
-    } else {
-      return(config$initial_genetic_variance)
-    }
+    return(config$initial_genetic_variance) # Fallback if no SNPs included
   }
 }
 
-#' Update Mixture Proportions (pi_c)
-#' @description 
-#' Law: pi_c | d ~ Dirichlet( delta + counts_c )
 update_mixture_proportions <- function(snp_counts_per_dist_cat, dirichlet_prior_counts) {
   num_categories <- ncol(snp_counts_per_dist_cat)
   num_dists      <- nrow(snp_counts_per_dist_cat)
-  
   new_pi <- matrix(0, nrow = num_dists, ncol = num_categories)
   for (cat_idx in 1:num_categories) {
     posterior_alpha <- dirichlet_prior_counts + snp_counts_per_dist_cat[, cat_idx]
@@ -204,27 +189,48 @@ update_mixture_proportions <- function(snp_counts_per_dist_cat, dirichlet_prior_
 
 # --- Main Driver Function ---
 
-run_bayesRCpi_mcmc <- function(phenotypes, genotype_matrix, snp_category_list, config) {
+run_bayesR_mimic_mcmc <- function(phenotypes, genotype_matrix, snp_category_list, config) {
   num_individuals <- length(phenotypes)
   num_snps        <- ncol(genotype_matrix)
   num_dists       <- config$num_distributions
   
-  # Find max category index to size matrices
-  # Flatten list
   all_cats <- unlist(snp_category_list)
-  if (length(all_cats) == 0) {
-    num_categories <- 1 
-  } else {
-    num_categories <- max(all_cats)
-  }
+  num_categories <- if (length(all_cats) == 0) 1 else max(all_cats)
   
   intercept        <- mean(phenotypes)
   snp_effects      <- rep(0.0, num_snps)
   genetic_variance <- config$initial_genetic_variance
   residual_variance <- config$initial_residual_variance
-  mixture_proportions <- matrix(1/num_dists, nrow = num_dists, ncol = num_categories)
+  # Initialize mixture proportions (pi) to match Old Fortran
+  # Fortran: p(1)=0.5, others inversely proportional to gpin
+  mixture_proportions <- matrix(0, nrow = num_dists, ncol = num_categories)
+  # Assuming Row 1 is Null (scale 0)
+  mixture_proportions[1, ] <- 0.5
   
-  residuals <- phenotypes - intercept
+  if (num_dists > 1) {
+    # Scales for 2:num_dists
+    scales <- config$mixture_variance_scales[2:num_dists]
+    # Check for zeros to avoid Inf
+    scales[scales == 0] <- 1e-9 
+    
+    inv_scales <- 1.0 / scales
+    # Normalize to sum to 0.5
+    norm_factors <- 0.5 * inv_scales / sum(inv_scales)
+    
+    for (i in 1:(num_dists - 1)) {
+      mixture_proportions[i + 1, ] <- norm_factors[i]
+    }
+  }
+  
+  # Initialize SNP effects (g) to match Old Fortran
+  # g = sqrt(vara / (0.5 * nloci))
+  initial_g_sd <- sqrt(genetic_variance / (0.5 * num_snps))
+  snp_effects  <- rep(initial_g_sd, num_snps)
+  
+  # Calculate initial residuals consistent with initialized effects
+  # residuals = y - mu - Xg
+  residuals <- phenotypes - intercept - drop(genotype_matrix %*% snp_effects)
+  
   snp_diagonal_xpx <- colSums(genotype_matrix^2)
   
   chain_intercept        <- numeric(config$num_iterations)
@@ -232,8 +238,6 @@ run_bayesRCpi_mcmc <- function(phenotypes, genotype_matrix, snp_category_list, c
   chain_residual_variance <- numeric(config$num_iterations)
   
   for (iteration in 1:config$num_iterations) {
-    residual_variance <- update_residual_variance(residuals, num_individuals)
-    
     intercept_update <- update_intercept(residuals, intercept, residual_variance, num_individuals)
     intercept <- intercept_update$value
     residuals <- intercept_update$residuals
@@ -250,15 +254,19 @@ run_bayesRCpi_mcmc <- function(phenotypes, genotype_matrix, snp_category_list, c
     snp_effects <- snp_update$snp_effects
     residuals   <- snp_update$residuals
     
-    genetic_variance <- update_genetic_variance(snp_update$counts, snp_update$weighted_ss, config)
+    genetic_variance <- update_genetic_variance_mimic(snp_update$counts, snp_update$simple_ss, config)
     mixture_proportions <- update_mixture_proportions(snp_update$counts, config$dirichlet_prior_counts)
+    
+    # Move residual variance update to END of loop to match Old Fortran behavior
+    # This leads to a "hot start" (low shrinkage) in the first iteration if init var is low.
+    residual_variance <- update_residual_variance_mimic(residuals, num_individuals)
     
     chain_intercept[iteration]        <- intercept
     chain_genetic_variance[iteration] <- genetic_variance
     chain_residual_variance[iteration] <- residual_variance
     
     if (iteration %% 10 == 0) {
-      cat(sprintf("Iteration %d: Genetic Var=%.6f, Residual Var=%.6f, Polygenic SNPs=%d\n", 
+      cat(sprintf("Mimic Iter %d: Va=%.6f, Ve=%.6f, Poly=%d\n", 
                   iteration, genetic_variance, residual_variance, sum(snp_effects != 0.0)))
     }
   }

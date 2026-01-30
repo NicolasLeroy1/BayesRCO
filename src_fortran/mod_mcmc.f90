@@ -238,9 +238,6 @@ contains
         model%vara = ans
         
         ! Update dependent variables
-        model%g = model%g * sqrt(model%vara / (model%gp(2)/config%gpin(2))) ! Rescale g if needed? 
-        ! NO, g is already in the right scale. If we change vara, the likelihood of g changes.
-        ! We don't rescale g. We update gp.
         model%gp = config%gpin * model%vara
         
     end subroutine update_vara

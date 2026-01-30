@@ -5,15 +5,15 @@ set -e
 # Run Fortran version
 # Run Fortran version
 echo "Running Fortran version..."
-time ./build/bin/bayesRCO_fortran -bfile toy_dataset/toy_app -out toy_fortran_overl -numit 50 -burnin 50 -thin 1 -seed 42 -catfile toy_dataset/toy_overlapping.txt
+time ./build/bin/bayesRCO_fortran -bfile toy_dataset/toy_app -out toy_fortran_overl -numit 200 -burnin 0 -thin 1 -seed 42 -catfile toy_dataset/toy_overlapping.txt
 
 # Run C version
 echo "Running C version..."
-time ./build/bin/bayesRCO_c -bfile toy_dataset/toy_app -out toy_c_overl -numit 50 -burnin 50 -thin 1 -seed 42 -catfile toy_dataset/toy_overlapping.txt
+time ./build/bin/bayesRCO_c -bfile toy_dataset/toy_app -out toy_c_overl -numit 200 -burnin 0 -thin 1 -seed 42 -catfile toy_dataset/toy_overlapping.txt
 
 # Run R version
 echo "Running R version..."
-time Rscript src_R/run_bayesRCO.R -bfile toy_dataset/toy_app -out toy_r_overl -numit 50 -seed 42 -catfile toy_dataset/toy_overlapping.txt
+time Rscript src_R/run_bayesRCO.R -bfile toy_dataset/toy_app -out toy_r_overl -numit 200 -burnin 0 -seed 42 -catfile toy_dataset/toy_overlapping.txt
 
 echo "All versions ran successfully!"
 echo "Comparing outputs..."
@@ -29,7 +29,7 @@ fi
 # Statistical comparison of chains
 if [ -f "toy_fortran_overl.hyp" ] && [ -f "toy_c_overl.hyp" ] && [ -f "toy_r_overl.hyp" ]; then
     echo "--- Statistical Chain Comparison ---"
-    Rscript src_R/compare_models.R toy_fortran_overl.hyp toy_c_overl.hyp toy_r_overl.hyp 20
+    Rscript src_R/compare_models.R toy_fortran_overl.hyp toy_c_overl.hyp toy_r_overl.hyp 50 similarity_overlap_visualization.pdf
 else
     echo "One or more hyperparameter chain files (.hyp) not found."
 fi

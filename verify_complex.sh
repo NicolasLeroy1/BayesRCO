@@ -5,15 +5,15 @@ set -e
 # Run Fortran version
 # Run Fortran version
 echo "Running Fortran version..."
-time ./build/bin/bayesRCO_fortran -bfile toy_dataset/toy_app -out toy_fortran_complex -numit 50 -burnin 50 -thin 1 -seed 42 -catfile toy_dataset/complex_annot.txt
+time ./build/bin/bayesRCO_fortran -bfile toy_dataset/toy_app -out toy_fortran_complex -numit 200 -burnin 0 -thin 1 -seed 42 -catfile toy_dataset/complex_annot.txt
 
 # Run C version
 echo "Running C version..."
-time ./build/bin/bayesRCO_c -bfile toy_dataset/toy_app -out toy_c_complex -numit 50 -burnin 50 -thin 1 -seed 42 -catfile toy_dataset/complex_annot.txt
+time ./build/bin/bayesRCO_c -bfile toy_dataset/toy_app -out toy_c_complex -numit 200 -burnin 0 -thin 1 -seed 42 -catfile toy_dataset/complex_annot.txt
 
 # Run R version
 echo "Running R version..."
-time Rscript src_R/run_bayesRCO.R -bfile toy_dataset/toy_app -out toy_r_complex -numit 50 -seed 42 -catfile toy_dataset/complex_annot.txt
+time Rscript src_R/run_bayesRCO.R -bfile toy_dataset/toy_app -out toy_r_complex -numit 200 -burnin 0 -seed 42 -catfile toy_dataset/complex_annot.txt
 
 echo "All versions ran successfully!"
 echo "Comparing outputs..."
@@ -29,7 +29,7 @@ fi
 # Statistical comparison of chains
 if [ -f "toy_fortran_complex.hyp" ] && [ -f "toy_c_complex.hyp" ] && [ -f "toy_r_complex.hyp" ]; then
     echo "--- Statistical Chain Comparison ---"
-    Rscript src_R/compare_models.R toy_fortran_complex.hyp toy_c_complex.hyp toy_r_complex.hyp 20
+    Rscript src_R/compare_models.R toy_fortran_complex.hyp toy_c_complex.hyp toy_r_complex.hyp 50 similarity_complex_visualization.pdf
 else
     echo "One or more hyperparameter chain files (.hyp) not found."
 fi
