@@ -80,14 +80,14 @@ read_hyp <- function(name, file) {
     return(NULL)
   }
   
-  if (nrow(data) <= burnin) {
-    cat(sprintf("WARNING: %s has insufficient rows (%d) for burnin (%d)\n", name, nrow(data), burnin))
+  if (nrow(data) == 0) {
+    cat(sprintf("WARNING: %s is empty\n", name))
     return(NULL)
   }
   
-  final_data <- data[(burnin + 1):nrow(data), ]
-  final_data$Model <- name
-  return(final_data)
+  data$Model <- name
+  data$Iteration_Full <- 1:nrow(data)
+  return(data)
 }
 
 # --- Load Data ---
@@ -100,17 +100,32 @@ if (length(valid_data_list) == 0) {
   stop("No valid data files loaded. Exiting.")
 }
 
-# Normalize columns for all valid data immediately
-common_cols <- c("Model", "mu", "vara", "vare")
-valid_data_list <- lapply(valid_data_list, function(d) {
-  d_sub <- d[, common_cols]
-  d_sub$Iteration_Rel <- 1:nrow(d_sub)
-  d_sub
-})
+# Normalize columns and Iteration labels
+common_cols_base <- c("Model", "mu", "vara", "vare", "Iteration_Full")
+valid_data_list <- lapply(valid_data_list, function(d) d[, common_cols_base])
 
-combined_df <- do.call(rbind, valid_data_list)
-# Factor ordering for consistent plotting
-combined_df$Model <- factor(combined_df$Model, levels = names(files))
+combined_df_full <- do.call(rbind, valid_data_list)
+combined_df_full$Model <- factor(combined_df_full$Model, levels = names(files))
+
+# Create post-burnin slice for statistical tests and densities
+valid_data_post_burnin <- lapply(valid_data_list, function(d) {
+    if (nrow(d) > burnin) {
+        return(d[(burnin + 1):nrow(d), ])
+    } else {
+        return(NULL)
+    }
+})
+valid_data_post_burnin <- valid_data_post_burnin[!sapply(valid_data_post_burnin, is.null)]
+
+if (length(valid_data_post_burnin) == 0) {
+    cat("WARNING: No data left after burnin. Plots might be empty.\n")
+}
+
+combined_df <- do.call(rbind, valid_data_post_burnin)
+if (!is.null(combined_df)) {
+    combined_df$Model <- factor(combined_df$Model, levels = names(files))
+    combined_df$Iteration_Rel <- 1:nrow(combined_df) # This might be wrong if models have diff lengths
+}
 
 params_to_check <- c("vare", "vara", "mu")
 fail_verification <- FALSE
@@ -134,9 +149,9 @@ my_colors <- c(
   "R Mimic"      = "#ff7f0e"
 )
 
-# Reference model for automated pass/fail (optional, but keep for compatibility)
+# Reference model for automated pass/fail
 ref_name <- "Old Fortran"
-if (!ref_name %in% names(valid_data_list)) ref_name <- names(valid_data_list)[1]
+if (!ref_name %in% names(valid_data_post_burnin)) ref_name <- names(valid_data_post_burnin)[1]
 
 # Function to generate KS Heatmap for a variable
 get_ks_heatmap <- function(var_name, data_list) {
@@ -189,15 +204,18 @@ get_ks_heatmap <- function(var_name, data_list) {
 # 1. Main Plots per Variable
 for (p in params_to_check) {
   # Trace Plot
-  trace_p <- ggplot(combined_df, aes(x = Iteration_Rel, y = .data[[p]], color = Model)) +
-    geom_line(alpha = 0.8) +
+  trace_p <- ggplot(combined_df_full, aes(x = Iteration_Full, y = .data[[p]], color = Model)) +
+    geom_line(alpha = 0.6) +
+    geom_vline(xintercept = burnin, linetype = "dashed", color = "black") +
     scale_color_manual(values = my_colors) +
-    labs(title = paste("Trace Plot:", p), x = "Iteration (Post-Burnin)", y = p) +
+    labs(title = paste("Trace Plot:", p), 
+         subtitle = paste("Dashed line at burnin =", burnin),
+         x = "Iteration", y = p) +
     theme_minimal() +
-    theme(legend.position = "none") # Hide legend here, show in density or top
+    theme(legend.position = "top")
   
   if (p == "vara") {
-    trace_p <- trace_p + scale_y_log10() + labs(subtitle = "Y-axis: Log10 Scale")
+    trace_p <- trace_p + scale_y_log10() + labs(subtitle = paste("Dashed line at burnin =", burnin, "| Y-axis: Log10"))
   }
 
   # Density Ridge Plot
@@ -213,7 +231,7 @@ for (p in params_to_check) {
   }
 
   # KS Heatmap
-  ks_h <- get_ks_heatmap(p, valid_data_list)
+  ks_h <- get_ks_heatmap(p, valid_data_post_burnin)
   
   # Layout:
   # Top row: Trace | Ridge Plot
@@ -228,8 +246,8 @@ for (p in params_to_check) {
 
 # 2. Summary Table
 # Create a text summary
-summary_stats <- do.call(rbind, lapply(names(valid_data_list), function(m) {
-  d <- valid_data_list[[m]]
+summary_stats <- do.call(rbind, lapply(names(valid_data_post_burnin), function(m) {
+  d <- valid_data_post_burnin[[m]]
   data.frame(
     Model = m,
     Vare_Mean = mean(d$vare),

@@ -6,6 +6,26 @@ module RDistributions
 
 contains
 
+    subroutine init_random_seed(seed1)
+        integer, intent(in) :: seed1
+        integer :: i, n, clock
+        integer, dimension(:), allocatable :: seed
+
+        call random_seed(size = n)
+        allocate(seed(n))
+
+        if (seed1 /= 0) then
+            do i = 1, n
+                seed(i) = abs(seed1) + (i - 1)
+            end do
+        else
+            call system_clock(count=clock)
+            seed = clock + 37 * [(i - 1, i = 1, n)]
+        end if
+        call random_seed(put = seed)
+        deallocate(seed)
+    end subroutine init_random_seed
+
     function rand_uniform(a, b) result(c)
         real(wp), intent(in) :: a, b
         real(wp) :: c, temp

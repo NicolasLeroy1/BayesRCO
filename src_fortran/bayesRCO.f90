@@ -26,6 +26,8 @@ program bayesR
         config%delta = 1.0_wp
     end if
 
+    call init_random_seed(config%seed)
+
     print *, "BayesRCO Refactored Fortran Version"
     
     call get_data_size(config, data)

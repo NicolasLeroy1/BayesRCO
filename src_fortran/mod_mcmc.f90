@@ -60,6 +60,8 @@ contains
         integer :: mc(config%ndist, config%ncat)
         real(wp) :: gh(config%ndist, config%ncat)
         integer :: unit_hyp
+        integer, allocatable :: permvec(:)
+        integer :: snploc
         
         ! Scratch variables for BayesRCpi
         integer :: active_cats(100), n_active, i_ac, n_opts, selected_idx
@@ -69,7 +71,13 @@ contains
         open(newunit=unit_hyp, file=trim(config%outprefix)//'.hyp', status='replace')
         write(unit_hyp, '(A)') "Iteration mu vara vare"
 
+        allocate(permvec(data%nloci))
+        do k = 1, data%nloci
+            permvec(k) = k
+        end do
+
         do rep = 1, config%numit
+            call permutate(permvec)
             
             ! Reset trackers
             mc = 0
@@ -85,7 +93,8 @@ contains
             vare_gp(2:) = model%vare / model%gp(2:)
 
             ! 3. Update SNP effects
-            do k = 1, data%nloci
+            do kk = 1, data%nloci
+                k = permvec(kk)
                 zz = model%xpx(k)
                 gk = model%g(k)
                 
@@ -268,5 +277,19 @@ contains
         end do
         
     end subroutine update_pi
+
+    subroutine permutate(v)
+        integer, dimension(:), intent(inout) :: v
+        integer :: n, i, k, temp
+        real :: r
+        n = size(v)
+        do i = n, 2, -1
+            call random_number(r)
+            k = int(r * i) + 1
+            temp = v(i)
+            v(i) = v(k)
+            v(k) = temp
+        end do
+    end subroutine permutate
 
 end module mod_mcmc

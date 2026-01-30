@@ -5,6 +5,17 @@
 #include "mcmc.h"
 #include "stats.h"
 
+static void shuffle(int *array, int n) {
+    if (n > 1) {
+        for (int i = n - 1; i > 0; i--) {
+            int j = rand() % (i + 1);
+            int t = array[j];
+            array[j] = array[i];
+            array[i] = t;
+        }
+    }
+}
+
 void init_model(const BayesConfig *config, const BayesData *data, BayesModel *model) {
     int nloci = data->nloci;
     int nt = data->nt;
@@ -59,7 +70,7 @@ void init_model(const BayesConfig *config, const BayesData *data, BayesModel *mo
     }
 
     // Initialize g (SNP effects)
-    double g_init = 0.0; // sqrt(model->vara / (0.5 * nloci));
+    double g_init = sqrt(model->vara / (0.5 * nloci));
     for (int i = 0; i < nloci; i++) model->g[i] = g_init;
 
     // Initial residuals: yadj = why - Xg - mu
@@ -117,6 +128,9 @@ void run_mcmc(const BayesConfig *config, const BayesData *data, BayesModel *mode
     int ndist = config->ndist;
     int ncat = config->ncat;
 
+    int *permvec = malloc(nloci * sizeof(int));
+    for (int i = 0; i < nloci; i++) permvec[i] = i;
+
     double *s = malloc(ndist * sizeof(double));
     double *stemp = malloc(ndist * sizeof(double));
     double *vare_gp = malloc(ndist * sizeof(double));
@@ -127,6 +141,7 @@ void run_mcmc(const BayesConfig *config, const BayesData *data, BayesModel *mode
     if (fp_hyp) fprintf(fp_hyp, "Iteration mu vara vare\n");
 
     for (int rep = 1; rep <= config->numit; rep++) {
+        shuffle(permvec, nloci);
         int included = 0;
         memset(model->mc, 0, ndist * ncat * sizeof(int));
         memset(model->gh, 0, ndist * ncat * sizeof(double));
@@ -149,7 +164,8 @@ void run_mcmc(const BayesConfig *config, const BayesData *data, BayesModel *mode
         }
 
         // 3. Update SNP effects
-        for (int k = 0; k < nloci; k++) {
+        for (int ii = 0; ii < nloci; ii++) {
+            int k = permvec[ii];
             double *z = &data->X[k * nt];
             double zz = model->xpx[k];
             double gk = model->g[k];
@@ -253,6 +269,7 @@ void run_mcmc(const BayesConfig *config, const BayesData *data, BayesModel *mode
     }
 
     if (fp_hyp) fclose(fp_hyp);
+    free(permvec);
     free(s);
     free(stemp);
     free(vare_gp);

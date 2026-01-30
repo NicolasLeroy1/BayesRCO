@@ -69,7 +69,7 @@ if [ -f "$TMP_DIR/toy_fortran.hyp" ] && [ -f "$TMP_DIR/toy_c.hyp" ] && [ -f "$TM
     echo "--- Statistical Chain Comparison ---"
     # Arguments: <C_hyp> <Fortran_New_hyp> <Fortran_Old_hyp> <Fortran_Dedup_hyp> <R_hyp> <R_Mimic_hyp> <Burnin> <OutputPDF>
     # Note: Using 50 as burnin for comparison script to ignore initial stabilization
-    Rscript src_R/compare_models.R $TMP_DIR/toy_fortran.hyp $TMP_DIR/toy_c.hyp $TMP_DIR/toy_r.hyp $TMP_DIR/toy_old_fortran.hyp $TMP_DIR/toy_dedup.hyp $TMP_DIR/toy_r_mimic.hyp 50 similarity_visualization.pdf
+    Rscript src_R/compare_models.R $TMP_DIR/toy_fortran.hyp $TMP_DIR/toy_c.hyp $TMP_DIR/toy_r.hyp $TMP_DIR/toy_old.hyp $TMP_DIR/toy_dedup.hyp $TMP_DIR/toy_r_mimic.hyp 50 similarity_visualization.pdf
 
 else
     echo "One or more hyperparameter chain files (.hyp) not found."
