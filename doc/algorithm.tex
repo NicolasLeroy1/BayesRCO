@@ -1,0 +1,63 @@
+\begin{algorithm}[H]
+\SetAlgoLined
+\textbf{Initialize parameters:}\\
+Set $\mu = \text{mean}(\mathbf{y})$, $\sigma_e^2$, $\sigma_g^2$\\
+Initialize $\mathbf{g} = \mathbf{0}$, $\mathbf{C}$ (mixture assignments), $\mathbf{A}$ (annotation assignments)\\
+Initialize $\boldsymbol{\pi}_a$ for each annotation category $a$ from Dirichlet prior $\boldsymbol{\delta}$\\
+Precompute $\mathbf{x}_j^T\mathbf{x}_j$ for all variants $j=1 \dots p$\\
+
+\For{iteration $t = 1$ to $T$}{
+    
+    \textbf{1. Update Intercept ($\mu$)}\\
+    Calculate residuals: $\mathbf{r} = \mathbf{y} - \mathbf{X}\mathbf{g}$\\
+    Sample $\mu \sim \mathcal{N}(\bar{\mathbf{r}}, \sigma_e^2 / n)$\\
+    Update residuals: $\mathbf{r} \leftarrow \mathbf{r} - (\mu_{new} - \mu_{old})$\\
+
+    \textbf{2. Update Variants ($g_j, C_j, A_j$)}\\
+    \For{variant $j = 1$ to $p$}{
+        \tcp{Add back effect of variant j to residuals}
+        $\mathbf{y}^* = \mathbf{r} + \mathbf{x}_j g_j$\\
+        Let $\mathcal{S}_j$ be the set of annotations for variant $j$\\
+        
+        \tcp{Calculate unnormalized probs for pairs (annotation a, mixture k)}
+        Initialize vector $\mathbf{P}$ of size $|\mathcal{S}_j| \times K$\\
+        \For{annotation $a \in \mathcal{S}_j$}{
+            \For{mixture component $k = 1$ to $K$}{
+                Set variance $\sigma^2_k = \gamma_k \sigma_g^2$\\
+                Calculate Likelihood $L(k)$ (marginalized over $g_j$):\\
+                $L(k) \propto \frac{1}{\sqrt{\mathbf{x}_j^T\mathbf{x}_j \sigma^2_k + \sigma_e^2}} \exp \left( \frac{(\mathbf{x}_j^T \mathbf{y}^*)^2 \sigma^2_k}{2 \sigma_e^2 (\mathbf{x}_j^T\mathbf{x}_j \sigma^2_k + \sigma_e^2)} \right)$\\
+                
+                $\mathbf{P}_{a,k} \propto L(k) \times \pi_{a,k}$\\
+            }
+        }
+        
+        Normalize $\mathbf{P}$ so sum equals 1.\\
+        Sample pair $(a_{new}, k_{new}) \sim \text{Categorical}(\mathbf{P})$\\
+        Set $A_j = a_{new}, C_j = k_{new}$\\
+        
+        \tcp{Sample effect size given the new component}
+        Set $\sigma^2_{new} = \gamma_{k_{new}} \sigma_g^2$\\
+        Calculate conditional mean $\hat{g}$ and variance $V_g$:\\
+        $V_g = \frac{\sigma_e^2 \sigma^2_{new}}{\mathbf{x}_j^T\mathbf{x}_j \sigma^2_{new} + \sigma_e^2}, \quad \hat{g} = \frac{\mathbf{x}_j^T \mathbf{y}^* \sigma^2_{new}}{\mathbf{x}_j^T\mathbf{x}_j \sigma^2_{new} + \sigma_e^2}$\\
+        Sample $g_j \sim \mathcal{N}(\hat{g}, V_g)$ (if $k_{new}=1$ (null), $g_j=0$)\\
+        
+        Update residuals: $\mathbf{r} = \mathbf{y}^* - \mathbf{x}_j g_j$\\
+    }
+
+    \textbf{3. Update Mixture Proportions ($\boldsymbol{\pi}$)}\\
+    \For{each unique annotation category $a$}{
+        Count variants assigned to this annotation and each component:\\
+        $N_{a,k} = \sum_{j=1}^p \mathbb{I}(A_j = a \cap C_j = k)$ for $k=1 \dots K$\\
+        Sample $\boldsymbol{\pi}_a \sim \text{Dirichlet}(\delta_1 + N_{a,1}, \dots, \delta_K + N_{a,K})$\\
+    }
+
+    \textbf{4. Update Genetic Variance ($\sigma_g^2$)}\\
+    Calculate Sum of Squares: $SS_g = \sum_{j: \gamma_{C_j} > 0} (g_j^2 / \gamma_{C_j})$\\
+    Count active variants: $p_{active} = \sum_{j} \mathbb{I}(\gamma_{C_j} > 0)$\\
+    Sample $\sigma_g^2 \sim \tilde{\chi}^{-2}(\nu_g + p_{active}, \frac{\nu_g S_g^2 + SS_g}{\nu_g + p_{active}})$\\
+
+    \textbf{5. Update Residual Variance ($\sigma_e^2$)}\\
+    Calculate Sum of Squares: $SS_e = \mathbf{r}^T\mathbf{r}$\\
+    Sample $\sigma_e^2 \sim \tilde{\chi}^{-2}(\nu_e + n, \frac{\nu_e S_e^2 + SS_e}{\nu_e + n})$\\
+}
+\end{algorithm}
