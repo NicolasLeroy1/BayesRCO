@@ -32,3 +32,6 @@
 *.app
 .Rproj.user
 *.Rproj
+
+# Temporary files
+temp/
