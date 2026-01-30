@@ -123,7 +123,8 @@ config <- list(
   mixture_variance_scales = c(0, 0.0001, 0.001, 0.01),
   initial_genetic_variance = 0.01,
   initial_residual_variance = 0.01,
-  genetic_variance_df = -2.0,
+  genetic_variance_df = as.numeric(get_arg("-dfvara", -2.0)),
+  residual_variance_df = as.numeric(get_arg("-dfvare", -2.0)),
   dirichlet_prior_counts = rep(1.0, 4)
 )
 

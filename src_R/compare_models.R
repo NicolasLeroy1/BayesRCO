@@ -235,6 +235,7 @@ summary_stats <- do.call(rbind, lapply(names(valid_data_list), function(m) {
     Vare_Mean = mean(d$vare),
     Vare_SD = sd(d$vare),
     Vara_Mean = mean(d$vara),
+    Vara_SD = sd(d$vara),
     Mu_Mean = mean(d$mu)
   )
 }))
@@ -243,6 +244,7 @@ summary_stats <- do.call(rbind, lapply(names(valid_data_list), function(m) {
 summary_stats$Vare_Mean <- sprintf("%.4f", summary_stats$Vare_Mean)
 summary_stats$Vare_SD   <- sprintf("%.4f", summary_stats$Vare_SD)
 summary_stats$Vara_Mean <- sprintf("%.4f", summary_stats$Vara_Mean)
+summary_stats$Vara_SD   <- sprintf("%.4f", summary_stats$Vara_SD)
 summary_stats$Mu_Mean   <- sprintf("%.4f", summary_stats$Mu_Mean)
 
 # Plot table using grid
@@ -268,6 +270,11 @@ for (r in 1:nrow(summary_stats)) {
     grid.text(summary_stats[r, i], x = x_pos[i], y = y_pos)
   }
 }
+
+# --- Console Output ---
+cat("\n--- Comparison Summary Table ---\n")
+print(summary_stats)
+cat("--------------------------------\n")
 
 dev.off()
 cat("Visualization complete.\n")
