@@ -32,3 +32,20 @@
 *.app
 .Rproj.user
 *.Rproj
+
+# Build Artifacts
+/bin/
+/build/
+/build_ref/
+
+# Verification Outputs
+/out_ref/
+/out_new/
+/out_benchmark/
+/debug_c/
+/debug_run/
+verification_plots.pdf
+
+# Log files
+*.log
+fort.21

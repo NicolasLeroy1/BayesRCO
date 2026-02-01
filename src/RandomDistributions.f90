@@ -24,7 +24,7 @@ module RDistributions
 
 implicit none
 
-double precision, parameter :: PI=3.141592653589793238462
+double precision, parameter :: PI=3.141592653589793238462d0
 
 contains
 

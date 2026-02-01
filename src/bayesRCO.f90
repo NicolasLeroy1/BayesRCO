@@ -134,6 +134,7 @@ if(mcmc) then
          mu_vare_store=0
          snpstore=0d0
          indiststore=0d0
+         varstore=0d0
          vsnptrack=2d0
          snptracker=0d0
          xpx=0d0
@@ -422,6 +423,7 @@ if(mcmc) then
          mu_vare_store=0
          snpstore=0d0
          indiststore=0d0
+         varstore=0d0
          annotstore=C(:,1:ncat)
          gannot=0d0
          snptracker=0d0
@@ -656,6 +658,7 @@ if(mcmc) then
       mu_vare_store=0
       snpstore=0d0
       indiststore=0d0
+      varstore=0d0
       annotstore=C(:,1:ncat)
       gannot=0d0
       snptracker=0d0
@@ -901,7 +904,7 @@ close(21)
 905 format(a,t30,'= ',10f10.5)
 906 format(a,t30,'= ',2f10.6)
 907 format(a,t30,'= ',f10.2,a)
-908 format(a20,1x,a4,'-',a2,'-',a2,' ',a2,':',a2':',a2)
+908 format(a20,1x,a4,'-',a2,'-',a2,' ',a2,':',a2,':',a2)
 909 format(a,t30,'= ',l)
 
 end program bayesR
