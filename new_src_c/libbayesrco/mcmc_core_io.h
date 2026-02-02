@@ -6,27 +6,18 @@
 #include <stdio.h>
 
 /**
- * Safe memory allocation macro with NULL check and error handling.
+ * Safe memory allocation macro with NULL check.
+ * In a library, we should ideally return ERR_MEMORY, but for now we'll 
+ * keep the check and allow the caller to handle success/failure via return codes.
  */
 #define SAFE_CALLOC(ptr, count, type) do { \
     (ptr) = (type*)calloc((count), sizeof(type)); \
-    if ((ptr) == NULL && (count) > 0) { \
-        fprintf(stderr, "Error: Memory allocation failed for %s (%zu bytes) at %s:%d\n", \
-                #ptr, (size_t)(count) * sizeof(type), __FILE__, __LINE__); \
-        exit(EXIT_FAILURE); \
-    } \
+    if ((ptr) == NULL && (count) > 0) return ERR_MEMORY; \
 } while(0)
 
-/**
- * Safe memory allocation macro for malloc with NULL check.
- */
 #define SAFE_MALLOC(ptr, count, type) do { \
     (ptr) = (type*)malloc((count) * sizeof(type)); \
-    if ((ptr) == NULL && (count) > 0) { \
-        fprintf(stderr, "Error: Memory allocation failed for %s (%zu bytes) at %s:%d\n", \
-                #ptr, (size_t)(count) * sizeof(type), __FILE__, __LINE__); \
-        exit(EXIT_FAILURE); \
-    } \
+    if ((ptr) == NULL && (count) > 0) return ERR_MEMORY; \
 } while(0)
 
 /**
@@ -40,9 +31,9 @@
 } while(0)
 
 void init_random_seed_custom(ModelConfig *config, prng_state *rs);
-void allocate_data(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MCMCStorage *mstore);
-void load_param(ModelConfig *config, GenomicData *gdata, MCMCStorage *mstore, MCMCState *mstate);
-void load_categories(ModelConfig *config, GenomicData *gdata);
+int allocate_data(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MCMCStorage *mstore);
+int load_param(ModelConfig *config, GenomicData *gdata, MCMCStorage *mstore, MCMCState *mstate);
+int load_categories(ModelConfig *config, GenomicData *gdata);
 void write_dgv(ModelConfig *config, GenomicData *gdata);
 void output_model(ModelConfig *config, GenomicData *gdata, MCMCStorage *mstore);
 void output_beta(ModelConfig *config, MCMCState *mstate, GenomicData *gdata);

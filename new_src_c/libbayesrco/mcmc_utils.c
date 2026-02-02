@@ -37,9 +37,9 @@ void mcmc_save_samples_common(ModelConfig *config, GenomicData *gdata, MCMCState
     /* Accumulate distribution statistics */
     for (int j = 0; j < ncat; j++) {
         for (int i = 0; i < ndist; i++) {
-            mstore->sum_mixture_proportions[i][j] += mstate->p[i][j];
-            mstore->sum_snps_per_distribution[i][j] += (double)mstate->snps_per_distribution[i][j];
-            mstore->sum_variance_per_distribution[i][j] += mstate->variance_per_distribution[i][j];
+            mstore->sum_mixture_proportions[IDX2(i, j, ncat)] += mstate->p[IDX2(i, j, ncat)];
+            mstore->sum_snps_per_distribution[IDX2(i, j, ncat)] += (double)mstate->snps_per_distribution[IDX2(i, j, ncat)];
+            mstore->sum_variance_per_distribution[IDX2(i, j, ncat)] += mstate->variance_per_distribution[IDX2(i, j, ncat)];
         }
     }
     
@@ -63,12 +63,12 @@ void mcmc_save_samples_common(ModelConfig *config, GenomicData *gdata, MCMCState
     
     for (int j = 0; j < ncat; j++) {
         for (int i = 0; i < ndist; i++) {
-            fprintf(config->fp_hyp, "%10d ", mstate->snps_per_distribution[i][j]);
+            fprintf(config->fp_hyp, "%10d ", mstate->snps_per_distribution[IDX2(i, j, ncat)]);
         }
     }
     for (int j = 0; j < ncat; j++) {
         for (int i = 0; i < ndist; i++) {
-            fprintf(config->fp_hyp, "%15.7E ", mstate->variance_per_distribution[i][j]);
+            fprintf(config->fp_hyp, "%15.7E ", mstate->variance_per_distribution[IDX2(i, j, ncat)]);
         }
     }
     fprintf(config->fp_hyp, "\n");
@@ -100,7 +100,7 @@ void mcmc_init_common(ModelConfig *config, GenomicData *gdata, MCMCStorage *msto
     for (int i = 0; i < nloci; i++) {
         int sum_c = 0;
         for (int j = 0; j < ncat; j++) {
-            sum_c += gdata->categories[i][j];
+            sum_c += gdata->categories[IDX2(i, j, ncat)];
         }
         gdata->annotations_per_locus[i] = sum_c;
     }
@@ -123,11 +123,9 @@ void mcmc_start_values_common(ModelConfig *config, GenomicData *gdata, MCMCState
     
     /* Compute mean phenotype for training individuals */
     double sum_y = 0.0;
-    int cnt = 0;
     for (int i = 0; i < nind; i++) {
         if (gdata->trains[i] == 0) {
             sum_y += gdata->phenotypes[i];
-            cnt++;
         }
     }
     mstate->yhat = sum_y / mstate->nnind;
@@ -150,14 +148,14 @@ void mcmc_start_values_common(ModelConfig *config, GenomicData *gdata, MCMCState
     /* Initialize mixture proportions */
     mstate->scale = 0.0;
     for (int j = 0; j < ncat; j++) {
-        mstate->p[0][j] = 0.5;
+        mstate->p[IDX2(0, j, ncat)] = 0.5;
         double sum_rest = 0.0;
         for (int i = 1; i < ndist; i++) {
-            mstate->p[i][j] = 1.0 / mstate->variance_scaling_factors[i];
-            sum_rest += mstate->p[i][j];
+            mstate->p[IDX2(i, j, ncat)] = 1.0 / mstate->variance_scaling_factors[i];
+            sum_rest += mstate->p[IDX2(i, j, ncat)];
         }
         for (int i = 1; i < ndist; i++) {
-            mstate->p[i][j] = 0.5 * mstate->p[i][j] / sum_rest;
+            mstate->p[IDX2(i, j, ncat)] = 0.5 * mstate->p[IDX2(i, j, ncat)] / sum_rest;
         }
     }
     
@@ -262,13 +260,13 @@ void mcmc_update_hypers_common(int nc, ModelConfig *config, GenomicData *gdata, 
     /* Sample mixture proportions from Dirichlet posterior */
     for (int j = 0; j < ncat; j++) {
         for (int i = 0; i < ndist; i++) {
-            mstate->dirichlet_scratch[i] = (double)mstate->snps_per_distribution[i][j] + mstate->dirichlet_priors[i];
+            mstate->dirichlet_scratch[i] = (double)mstate->snps_per_distribution[IDX2(i, j, ncat)] + mstate->dirichlet_priors[i];
         }
         rng_dirichlet(rs, ndist, mstate->dirichlet_scratch, mstate->ytemp);
         
         for (int i = 0; i < ndist; i++) {
-            mstate->p[i][j] = mstate->ytemp[i];
-            mstate->log_p[i][j] = log(mstate->p[i][j]);
+            mstate->p[IDX2(i, j, ncat)] = mstate->ytemp[i];
+            mstate->log_p[IDX2(i, j, ncat)] = log(mstate->p[IDX2(i, j, ncat)]);
         }
     }
 }

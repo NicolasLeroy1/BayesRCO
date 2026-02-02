@@ -5,8 +5,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-void get_size(ModelConfig *config, GenomicData *gdata);
-void load_phenos_plink(ModelConfig *config, GenomicData *gdata);
-void load_snp_binary(ModelConfig *config, GenomicData *gdata);
+int get_size(ModelConfig *config, GenomicData *gdata);
+int load_phenos_plink(ModelConfig *config, GenomicData *gdata);
+int load_snp_binary(ModelConfig *config, GenomicData *gdata);
 
 #endif // PLINK_IO_H

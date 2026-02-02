@@ -6,13 +6,20 @@
 #include "rng.h"
 
 /* =========================================================================
- * Constants
+ * Constants & Error Codes
  * ========================================================================= */
 
 #define PI 3.141592653589793238462
 #define LOG_UPPER_LIMIT 700.0
 #define MISSING_VALUE -9999.0
 #define GENOTYPE_MISSING_THRESHOLD 3.0
+
+/* Error Codes */
+#define SUCCESS 0
+#define ERR_FILE_IO 1
+#define ERR_MEMORY 2
+#define ERR_INVALID_ARG 3
+#define ERR_RUNTIME 4
 
 /* Named constants for magic numbers */
 #define DEFAULT_NUM_DISTRIBUTIONS 4
@@ -22,9 +29,12 @@
 #define DEFAULT_MARKER_REPLICATES 5000
 #define NUM_HYPERPARAMETER_STATS 4
 #define PERMUTE_BATCH_SIZE 100
-#define PATH_MAX_LENGTH 200
+#define PATH_MAX_LENGTH 4096 /* Increased for safety */
 #define LINE_BUFFER_SIZE 4096
 #define SMALL_BUFFER_SIZE 1024
+
+/* Indexing Macros */
+#define IDX2(i, j, nj) ((i)*(nj) + (j))
 
 /* =========================================================================
  * Data Structures
@@ -33,10 +43,6 @@
 /**
  * @struct ModelConfig
  * @brief Configuration parameters for the MCMC model.
- * 
- * Contains algorithm settings, file paths, and output file handles.
- * This structure is populated from command-line arguments and remains
- * mostly constant during MCMC execution.
  */
 typedef struct {
     /* Algorithm parameters */
@@ -115,12 +121,12 @@ typedef struct {
     double *included_loci;           /* Inclusion indicator (includedloci), size: nloci */
     
     /* Annotation data */
-    int **categories;                /* Annotation matrix (C), size: nloci x ncat */
+    int *categories;                 /* Annotation matrix (C), size: nloci * ncat [Flattened] */
     int *annotations_per_locus;      /* Number of annotations per SNP (nannot), size: nloci */
     int *current_category;           /* Current category assignment (a), size: nloci */
     int *current_distribution;       /* Current distribution assignment (vsnptrack), size: nloci */
-    int **distribution_per_category; /* Distribution per category (snptracker), size: nloci x ncat */
-    double **effects_per_category;   /* Effects per category (gannot), size: nloci x ncat */
+    int *distribution_per_category;  /* Distribution per category (snptracker), size: nloci * ncat [Flattened] */
+    double *effects_per_category;    /* Effects per category (gannot), size: nloci * ncat [Flattened] */
     
     /* Permutation and training data */
     int *trains;                     /* Training indicator (0=train, 1=test), size: nind */
@@ -135,9 +141,6 @@ typedef struct {
 /**
  * @struct MCMCState
  * @brief Current state of the MCMC sampler.
- * 
- * Contains all variables that are updated during each MCMC iteration,
- * including effect estimates, variance components, and mixture proportions.
  */
 typedef struct {
     /* Variance components */
@@ -166,10 +169,10 @@ typedef struct {
     /* Distribution state */
     double *log_distribution_variances;                  /* Log of distribution variances (log_gp), size: ndist */
     double *residual_variance_over_distribution_variances; /* vare/gp ratio (vare_gp), size: ndist */
-    double **p;                      /* Mixture proportions, size: ndist x ncat */
-    double **log_p;                  /* Log mixture proportions, size: ndist x ncat */
-    double **variance_per_distribution; /* Variance per distribution (varindist), size: ndist x ncat */
-    int **snps_per_distribution;     /* SNP counts per distribution (snpindist), size: ndist x ncat */
+    double *p;                       /* Mixture proportions, size: ndist * ncat [Flattened] */
+    double *log_p;                   /* Log mixture proportions, size: ndist * ncat [Flattened] */
+    double *variance_per_distribution; /* Variance per distribution (varindist), size: ndist * ncat [Flattened] */
+    int *snps_per_distribution;      /* SNP counts per distribution (snpindist), size: ndist * ncat [Flattened] */
     
     /* Scratch space for computations */
     double *dirichlet_scratch;       /* Dirichlet sampling scratch (dirx), size: ndist */
@@ -200,9 +203,6 @@ typedef struct {
 /**
  * @struct MCMCStorage
  * @brief Accumulated statistics for posterior summary.
- * 
- * Stores running sums of sampled values for computing posterior means
- * and other summary statistics after MCMC completion.
  */
 typedef struct {
     /* Per-SNP accumulators */
@@ -213,14 +213,14 @@ typedef struct {
     /* Hyperparameter accumulators: [0]=mu, [1]=nsnp, [2]=vara, [3]=vare */
     double *mu_vare_store;           /* Size: NUM_HYPERPARAMETER_STATS (4) */
     
-    /* Per-distribution accumulators (ndist x ncat) */
-    double **sum_snps_per_distribution;      /* Sum of SNP counts (snpstore) */
-    double **sum_variance_per_distribution;  /* Sum of variances (varstore) */
-    double **sum_mixture_proportions;        /* Sum of mixture proportions (pstore) */
+    /* Per-distribution accumulators (ndist * ncat) [Flattened] */
+    double *sum_snps_per_distribution;      /* Sum of SNP counts (snpstore) */
+    double *sum_variance_per_distribution;  /* Sum of variances (varstore) */
+    double *sum_mixture_proportions;        /* Sum of mixture proportions (pstore) */
     
     /* Per-SNP distribution counts */
-    double **sum_distribution_counts;/* Size: nloci x ndist */
-    double **sum_category_counts;    /* Size: nloci x ncat */
+    double *sum_distribution_counts; /* Size: nloci * ndist [Flattened] */
+    double *sum_category_counts;     /* Size: nloci * ncat [Flattened] */
 } MCMCStorage;
 
 #endif /* BAYESRCO_H */

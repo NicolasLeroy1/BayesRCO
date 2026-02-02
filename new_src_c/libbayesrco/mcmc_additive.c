@@ -51,19 +51,19 @@ void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             
             /* Update log mixture probabilities */
             for (int i = 0; i < ndist; i++) {
-                mstate->log_p[i][j] = log(mstate->p[i][j]);
+                mstate->log_p[IDX2(i, j, ncat)] = log(mstate->p[IDX2(i, j, ncat)]);
             }
             
             /* Only process if this SNP belongs to this category */
-            if (gdata->categories[snploc][j] != 1) continue;
+            if (gdata->categories[IDX2(snploc, j, ncat)] != 1) continue;
             
             /* Compute log selection probabilities */
             double *log_probs = mstate->log_likelihoods;
-            log_probs[0] = mstate->log_p[0][j];
+            log_probs[0] = mstate->log_p[IDX2(0, j, ncat)];
             for (int kk = 1; kk < ndist; kk++) {
                 double logdetV = log(mstate->genomic_values[kk] * ssq_over_vare + 1.0);
                 double uhat = rhs / (ssq + mstate->residual_variance_over_distribution_variances[kk]);
-                log_probs[kk] = -0.5 * (logdetV - (rhs * uhat / mstate->variance_residual)) + mstate->log_p[kk][j];
+                log_probs[kk] = -0.5 * (logdetV - (rhs * uhat / mstate->variance_residual)) + mstate->log_p[IDX2(kk, j, ncat)];
             }
             
             /* Stabilize and normalize */
@@ -73,7 +73,7 @@ void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             int dist_idx = sample_discrete(mstate->selection_probs, ndist, rs);
             
             /* Store assignment (1-based for compatibility) */
-            gdata->distribution_per_category[snploc][j] = dist_idx + 1;
+            gdata->distribution_per_category[IDX2(snploc, j, ncat)] = dist_idx + 1;
             
             /* Sample effect */
             double cat_effect;
@@ -87,7 +87,7 @@ void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
                 add_col_scalar(mstate->adjusted_phenotypes, gdata->genotypes,
                                snploc, nt, nloci, -cat_effect);
             }
-            gdata->effects_per_category[snploc][j] = cat_effect;
+            gdata->effects_per_category[IDX2(snploc, j, ncat)] = cat_effect;
         }
     }
     
@@ -96,9 +96,9 @@ void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
         double sum_effect = 0.0;
         int max_track = 0;
         for (int j = 0; j < ncat; j++) {
-            sum_effect += gdata->effects_per_category[i][j];
-            if (gdata->distribution_per_category[i][j] > max_track) {
-                max_track = gdata->distribution_per_category[i][j];
+            sum_effect += gdata->effects_per_category[IDX2(i, j, ncat)];
+            if (gdata->distribution_per_category[IDX2(i, j, ncat)] > max_track) {
+                max_track = gdata->distribution_per_category[IDX2(i, j, ncat)];
             }
         }
         mstate->snp_effects[i] = sum_effect;
@@ -111,14 +111,14 @@ void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             int count = 0;
             double sum_sq = 0.0;
             for (int k = 0; k < nloci; k++) {
-                if (gdata->distribution_per_category[k][j] == d + 1) {
+                if (gdata->distribution_per_category[IDX2(k, j, ncat)] == d + 1) {
                     count++;
-                    double eff = gdata->effects_per_category[k][j];
+                    double eff = gdata->effects_per_category[IDX2(k, j, ncat)];
                     sum_sq += eff * eff;
                 }
             }
-            mstate->snps_per_distribution[d][j] = count;
-            mstate->variance_per_distribution[d][j] = sum_sq;
+            mstate->snps_per_distribution[IDX2(d, j, ncat)] = count;
+            mstate->variance_per_distribution[IDX2(d, j, ncat)] = sum_sq;
         }
     }
     

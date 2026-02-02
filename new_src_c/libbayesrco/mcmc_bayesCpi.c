@@ -27,7 +27,7 @@ void mcmc_bayesCpi_init(ModelConfig *config, GenomicData *gdata, MCMCState *msta
     /* Initialize effects per category to zero */
     for (int i = 0; i < nloci; i++) {
         for (int j = 0; j < ncat; j++) {
-            gdata->effects_per_category[i][j] = 0.0;
+            gdata->effects_per_category[IDX2(i, j, ncat)] = 0.0;
         }
     }
     
@@ -37,8 +37,8 @@ void mcmc_bayesCpi_init(ModelConfig *config, GenomicData *gdata, MCMCState *msta
      */
     for (int j = 0; j < ncat; j++) {
         for (int i = 0; i < nloci; i++) {
-            if (gdata->categories[i][j] == 1) {
-                gdata->distribution_per_category[i][j] = 2;
+            if (gdata->categories[IDX2(i, j, ncat)] == 1) {
+                gdata->distribution_per_category[IDX2(i, j, ncat)] = 2;
             }
         }
     }
@@ -68,23 +68,16 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
     
     /* Process each category */
     for (int j = 0; j < ncat; j++) {
-        /* Compute log mixture proportions for this category */
-        double *log_mix_probs = mstate->log_p[0];  /* Note: this should index into the j-th column */
-        for (int i = 0; i < ndist; i++) {
-            /* Access p[i][j] and compute log */
-            log_mix_probs[i] = log(mstate->p[i][j]);
-        }
-
         /* Process each locus in permuted order */
         for (int k = 0; k < nloci; k++) {
             int snploc = gdata->permvec[k];
             
             /* Only process if this locus belongs to this category */
-            if (gdata->categories[snploc][j] != 1) continue;
+            if (gdata->categories[IDX2(snploc, j, ncat)] != 1) continue;
             
             double ssq = gdata->snp_correlations[snploc];
-            double current_effect = gdata->effects_per_category[snploc][j];
-            int current_dist = gdata->distribution_per_category[snploc][j];
+            double current_effect = gdata->effects_per_category[IDX2(snploc, j, ncat)];
+            int current_dist = gdata->distribution_per_category[IDX2(snploc, j, ncat)];
             
             /* If previously included (non-null), add effect back to adjusted phenotype */
             if (current_dist > 1) {
@@ -97,10 +90,9 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
                                         mstate->adjusted_phenotypes);
             
             /* Compute log selection probabilities */
-            /* Note: need to build log_mix_probs array for column j */
             double log_mix_for_cat[DEFAULT_NUM_DISTRIBUTIONS];
             for (int d = 0; d < ndist; d++) {
-                log_mix_for_cat[d] = log(mstate->p[d][j]);
+                log_mix_for_cat[d] = log(mstate->p[IDX2(d, j, ncat)]);
             }
             
             compute_log_selection_probs(log_probs, rhs, ssq, 
@@ -115,7 +107,7 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             int dist_idx = sample_discrete(probs, ndist, rs);
             
             /* Store distribution assignment (1-based for output compatibility) */
-            gdata->distribution_per_category[snploc][j] = dist_idx + 1;
+            gdata->distribution_per_category[IDX2(snploc, j, ncat)] = dist_idx + 1;
             gdata->current_distribution[snploc] = dist_idx + 1;
             
             /* Sample effect */
@@ -132,7 +124,7 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
                 mstate->included++;
             }
             
-            gdata->effects_per_category[snploc][j] = new_effect;
+            gdata->effects_per_category[IDX2(snploc, j, ncat)] = new_effect;
             
             /* Early exit if marker set size reached */
             if (config->marker_set_size > 0 && mstate->rep > config->marker_replicates) {
@@ -145,7 +137,7 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
     for (int i = 0; i < nloci; i++) {
         double sum = 0.0;
         for (int j = 0; j < ncat; j++) {
-            sum += gdata->effects_per_category[i][j];
+            sum += gdata->effects_per_category[IDX2(i, j, ncat)];
         }
         mstate->snp_effects[i] = sum;
     }
@@ -156,14 +148,14 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             int count = 0;
             double sum_sq = 0.0;
             for (int k = 0; k < nloci; k++) {
-                if (gdata->distribution_per_category[k][j] == d + 1) {
+                if (gdata->distribution_per_category[IDX2(k, j, ncat)] == d + 1) {
                     count++;
-                    double eff = gdata->effects_per_category[k][j];
+                    double eff = gdata->effects_per_category[IDX2(k, j, ncat)];
                     sum_sq += eff * eff;
                 }
             }
-            mstate->snps_per_distribution[d][j] = count;
-            mstate->variance_per_distribution[d][j] = sum_sq;
+            mstate->snps_per_distribution[IDX2(d, j, ncat)] = count;
+            mstate->variance_per_distribution[IDX2(d, j, ncat)] = sum_sq;
         }
     }
     
@@ -173,7 +165,7 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
     }
     for (int j = 0; j < ncat; j++) {
         for (int i = 0; i < nloci; i++) {
-            if (gdata->distribution_per_category[i][j] > 1) {
+            if (gdata->distribution_per_category[IDX2(i, j, ncat)] > 1) {
                 gdata->included_loci[i] = 1.0;
             }
         }

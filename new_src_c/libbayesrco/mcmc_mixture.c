@@ -28,7 +28,7 @@ void mcmc_mixture_init(ModelConfig *config, GenomicData *gdata, MCMCState *mstat
     for (int k = 0; k < nloci; k++) {
         if (gdata->annotations_per_locus[k] == 1) {
             for (int j = 0; j < ncat; j++) {
-                if (gdata->categories[k][j] == 1) {
+                if (gdata->categories[IDX2(k, j, ncat)] == 1) {
                     gdata->current_category[k] = j;
                 }
             }
@@ -52,7 +52,7 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
     /* Reset distribution per category tracking */
     for (int k = 0; k < nloci; k++) {
         for (int j = 0; j < ncat; j++) {
-            gdata->distribution_per_category[k][j] = 0;
+            gdata->distribution_per_category[IDX2(k, j, ncat)] = 0;
         }
     }
 
@@ -69,7 +69,7 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
             
             /* Prepare Dirichlet posterior for annotation sampling */
             for (int j = 0; j < ncat; j++) {
-                mstate->category_dirichlet_scratch[j] = (double)gdata->categories[snploc][j];
+                mstate->category_dirichlet_scratch[j] = (double)gdata->categories[IDX2(snploc, j, ncat)];
             }
             if (mstate->rep != 1) {
                 /* Add count for current category */
@@ -106,12 +106,12 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
             
             /* Compute annotation selection scores */
             for (int j = 0; j < ncat; j++) {
-                if (gdata->categories[snploc][j] == 1) {
-                    double ss_val = mstate->p[0][j] * exp(-maxs);
+                if (gdata->categories[IDX2(snploc, j, ncat)] == 1) {
+                    double ss_val = mstate->p[IDX2(0, j, ncat)] * exp(-maxs);
                     for (int kk = 1; kk < ndist; kk++) {
                         double detV = mstate->genomic_values[kk] * ssq_over_vare + 1.0;
                         double uhat = rhs / (ssq + mstate->residual_variance_over_distribution_variances[kk]);
-                        ss_val += mstate->p[kk][j] * pow(detV, -0.5) * 
+                        ss_val += mstate->p[IDX2(kk, j, ncat)] * pow(detV, -0.5) * 
                                   exp(0.5 * uhat * rhs / mstate->variance_residual - maxs);
                     }
                     mstate->ss[j] = log(mstate->category_probabilities[j]) + log(ss_val);
@@ -120,12 +120,12 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
             
             /* Stabilize and normalize */
             for (int kk = 0; kk < ncat; kk++) {
-                if (gdata->categories[snploc][kk] == 1) {
+                if (gdata->categories[IDX2(snploc, kk, ncat)] == 1) {
                     double skk = mstate->ss[kk];
                     double sk = 0.0;
                     bool overflow = false;
                     for (int l = 0; l < ncat; l++) {
-                        if (gdata->categories[snploc][l] == 1 && l != kk) {
+                        if (gdata->categories[IDX2(snploc, l, ncat)] == 1 && l != kk) {
                             double clike = mstate->ss[l] - skk;
                             if (clike > LOG_UPPER_LIMIT) { overflow = true; break; }
                             if (clike < -LOG_UPPER_LIMIT) continue;
@@ -166,12 +166,12 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
         
         /* Compute log selection probabilities */
         double *log_probs = mstate->log_likelihoods;
-        log_probs[0] = mstate->log_p[0][j];
+        log_probs[0] = mstate->log_p[IDX2(0, j, ncat)];
         for (int kk = 1; kk < ndist; kk++) {
             double ssq_over_vare = ssq / mstate->variance_residual;
             double logdetV = log(mstate->genomic_values[kk] * ssq_over_vare + 1.0);
             double uhat = rhs / (ssq + mstate->residual_variance_over_distribution_variances[kk]);
-            log_probs[kk] = -0.5 * (logdetV - (rhs * uhat / mstate->variance_residual)) + mstate->log_p[kk][j];
+            log_probs[kk] = -0.5 * (logdetV - (rhs * uhat / mstate->variance_residual)) + mstate->log_p[IDX2(kk, j, ncat)];
         }
         
         /* Stabilize and normalize */
@@ -181,7 +181,7 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
         int dist_idx = sample_discrete(mstate->selection_probs, ndist, rs);
         
         /* Store assignments (1-based for compatibility) */
-        gdata->distribution_per_category[snploc][j] = dist_idx + 1;
+        gdata->distribution_per_category[IDX2(snploc, j, ncat)] = dist_idx + 1;
         gdata->current_distribution[snploc] = dist_idx + 1;
         
         /* Sample effect */
@@ -208,20 +208,20 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
             int cnt = 0;
             double sum_g2 = 0.0;
             for (int k = 0; k < nloci; k++) {
-                if (gdata->distribution_per_category[k][j] == i + 1) {
+                if (gdata->distribution_per_category[IDX2(k, j, ncat)] == i + 1) {
                     cnt++;
                     sum_g2 += mstate->snp_effects[k] * mstate->snp_effects[k];
                 }
             }
-            mstate->snps_per_distribution[i][j] = cnt;
-            mstate->variance_per_distribution[i][j] = sum_g2;
+            mstate->snps_per_distribution[IDX2(i, j, ncat)] = cnt;
+            mstate->variance_per_distribution[IDX2(i, j, ncat)] = sum_g2;
         }
     }
     
     /* Count included SNPs (distribution > 1) */
     int count_zero = 0;
     for (int j = 0; j < ncat; j++) {
-        count_zero += mstate->snps_per_distribution[0][j];
+        count_zero += mstate->snps_per_distribution[IDX2(0, j, ncat)];
     }
     mstate->included = nloci - count_zero;
 }

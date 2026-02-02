@@ -2,7 +2,7 @@
 #include <string.h>
 #include <ctype.h>
 
-void get_size(ModelConfig *config, GenomicData *gdata) {
+int get_size(ModelConfig *config, GenomicData *gdata) {
     FILE *fp;
     char buffer[1024];
     
@@ -15,7 +15,7 @@ void get_size(ModelConfig *config, GenomicData *gdata) {
         fclose(fp);
     } else {
         printf("Error opening phen file: %s\n", config->phenotype_file_path);
-        exit(1);
+        return ERR_FILE_IO;
     }
 
     gdata->num_loci = 0;
@@ -27,19 +27,22 @@ void get_size(ModelConfig *config, GenomicData *gdata) {
         fclose(fp);
     } else {
         printf("Error opening bim file: %s\n", config->bim_file_path);
-        exit(1);
+        return ERR_FILE_IO;
     }
+    return SUCCESS;
 }
 
-void load_phenos_plink(ModelConfig *config, GenomicData *gdata) {
+int load_phenos_plink(ModelConfig *config, GenomicData *gdata) {
     FILE *fp;
     char line[4096];
     
     gdata->trains = (int*)calloc(gdata->num_individuals, sizeof(int));
+    if (!gdata->trains) return ERR_MEMORY;
     gdata->phenotypes = (double*)calloc(gdata->num_individuals, sizeof(double));
+    if (!gdata->phenotypes) return ERR_MEMORY;
     
     fp = fopen(config->phenotype_file_path, "r");
-    if (!fp) exit(1);
+    if (!fp) return ERR_FILE_IO;
     
     for (int i = 0; i < gdata->num_individuals; i++) {
         if (!fgets(line, sizeof(line), fp)) break;
@@ -76,32 +79,35 @@ void load_phenos_plink(ModelConfig *config, GenomicData *gdata) {
         }
         
         if (found && val != MISSING_VALUE) { 
-             gdata->trains[i] = 0;
-             gdata->phenotypes[i] = val;
+            gdata->trains[i] = 0;
+            gdata->phenotypes[i] = val;
         } else {
-             gdata->trains[i] = 1;
-             gdata->phenotypes[i] = MISSING_VALUE;
+            gdata->trains[i] = 1;
+            gdata->phenotypes[i] = MISSING_VALUE;
         }
     }
     fclose(fp);
+    return SUCCESS;
 }
 
-void load_snp_binary(ModelConfig *config, GenomicData *gdata) {
+int load_snp_binary(ModelConfig *config, GenomicData *gdata) {
     FILE *fp;
     unsigned char b1, b2, b3;
     double igen[4] = {0.0, 3.0, 1.0, 2.0}; // HomRef, Missing, Het, HomAlt (PLINK binary format)
     
     gdata->genotypes = (double*)calloc(gdata->num_loci * gdata->num_phenotyped_individuals, sizeof(double));
+    if (!gdata->genotypes) return ERR_MEMORY;
     
     fp = fopen(config->genotype_file_path, "rb");
-    if (!fp) exit(1);
+    if (!fp) return ERR_FILE_IO;
     
-    if (fread(&b1, 1, 1, fp) != 1) { fclose(fp); exit(1); }
-    if (fread(&b2, 1, 1, fp) != 1) { fclose(fp); exit(1); }
-    if (fread(&b3, 1, 1, fp) != 1) { fclose(fp); exit(1); }
+    if (fread(&b1, 1, 1, fp) != 1) { fclose(fp); return ERR_FILE_IO; }
+    if (fread(&b2, 1, 1, fp) != 1) { fclose(fp); return ERR_FILE_IO; }
+    if (fread(&b3, 1, 1, fp) != 1) { fclose(fp); return ERR_FILE_IO; }
     
     int nbytes = (gdata->num_individuals + 3) / 4;
     unsigned char *buffer = (unsigned char*)malloc(nbytes);
+    if (!buffer) { fclose(fp); return ERR_MEMORY; }
     
     for (int j = 0; j < gdata->num_loci; j++) {
         if (fread(buffer, 1, nbytes, fp) != nbytes) break;
@@ -123,4 +129,5 @@ void load_snp_binary(ModelConfig *config, GenomicData *gdata) {
     
     free(buffer);
     fclose(fp);
+    return SUCCESS;
 }

@@ -269,9 +269,18 @@ int main(int argc, char **argv) {
     if (config.mcmc && !file_exists(config.genotype_file_path)) return 1;
     if (!init_logging(&config)) return 1;
     
-    get_size(&config, &gdata);
-    load_phenos_plink(&config, &gdata);
-    allocate_data(&config, &gdata, &mstate, &mstore);
+    if (get_size(&config, &gdata) != SUCCESS) {
+        fprintf(stderr, "Error: Failed to determine dataset dimensions\n");
+        return 1;
+    }
+    if (load_phenos_plink(&config, &gdata) != SUCCESS) {
+        fprintf(stderr, "Error: Failed to load phenotype data\n");
+        return 1;
+    }
+    if (allocate_data(&config, &gdata, &mstate, &mstore) != SUCCESS) {
+        fprintf(stderr, "Error: Memory allocation failed\n");
+        return 1;
+    }
     
     if (gpin_count > 0) {
         for (int i = 0; i < config.num_distributions; i++) mstate.variance_scaling_factors[i] = gpin_args[i];
@@ -291,8 +300,16 @@ int main(int argc, char **argv) {
     }
     free(delta_args);
     
-    load_categories(&config, &gdata);
-    load_snp_binary(&config, &gdata);
+    if (load_categories(&config, &gdata) != SUCCESS) {
+        fprintf(stderr, "Error: Failed to load category file\n");
+        cleanup_data(&config, &gdata, &mstate, &mstore);
+        return 1;
+    }
+    if (load_snp_binary(&config, &gdata) != SUCCESS) {
+        fprintf(stderr, "Error: Failed to load genotype binary data\n");
+        cleanup_data(&config, &gdata, &mstate, &mstore);
+        return 1;
+    }
     xcenter(&config, &gdata);
     init_random_seed_custom(&config, &rs);
     
@@ -305,7 +322,11 @@ int main(int argc, char **argv) {
         if (config.fp_hyp) fprintf(config.fp_hyp, " Replicate       Nsnp              Va              Ve \n");
         
         init_variance_components(&config, &gdata, &mstate);
-        run_mcmc(&config, &gdata, &mstate, &mstore, &rs);
+        if (run_mcmc(&config, &gdata, &mstate, &mstore, &rs) != SUCCESS) {
+            fprintf(stderr, "Error: MCMC execution failed\n");
+            cleanup_data(&config, &gdata, &mstate, &mstore);
+            return 1;
+        }
     }
     
     cleanup_data(&config, &gdata, &mstate, &mstore);
