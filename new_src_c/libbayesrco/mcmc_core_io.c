@@ -1,146 +1,6 @@
-#include "io.h"
-#include <stdlib.h>
+#include "mcmc_core_io.h"
 #include <string.h>
 #include <time.h>
-#include <ctype.h>
-
-void get_size(ModelConfig *config, GenomicData *gdata) {
-    FILE *fp;
-    char buffer[1024];
-    
-    gdata->num_individuals = 0;
-    fp = fopen(config->phenotype_file_path, "r");
-    if (fp) {
-        while (fgets(buffer, sizeof(buffer), fp)) {
-            gdata->num_individuals++;
-        }
-        fclose(fp);
-    } else {
-        printf("Error opening phen file: %s\n", config->phenotype_file_path);
-        exit(1);
-    }
-
-    gdata->num_loci = 0;
-    fp = fopen(config->bim_file_path, "r");
-    if (fp) {
-        while (fgets(buffer, sizeof(buffer), fp)) {
-            gdata->num_loci++;
-        }
-        fclose(fp);
-    } else {
-        printf("Error opening bim file: %s\n", config->bim_file_path);
-        exit(1);
-    }
-}
-
-void load_phenos_plink(ModelConfig *config, GenomicData *gdata) {
-    FILE *fp;
-    char line[4096];
-    
-    gdata->trains = (int*)calloc(gdata->num_individuals, sizeof(int));
-    gdata->phenotypes = (double*)calloc(gdata->num_individuals, sizeof(double));
-    
-    fp = fopen(config->phenotype_file_path, "r");
-    if (!fp) exit(1);
-    
-    for (int i = 0; i < gdata->num_individuals; i++) {
-        if (!fgets(line, sizeof(line), fp)) break;
-        
-        char *ptr = line;
-        int col = 0;
-        char *token;
-        char *saveptr;
-        double val = MISSING_VALUE;
-        int found = 0;
-        
-        // Manual tokenization to handle multiple spaces
-        char *p = line;
-        while (*p && isspace(*p)) p++; // skip leading
-        
-        int current_col = 0;
-        int target_col = 5 + (config->trait_column_index - 1); // 0-based index of target column
-        
-        // Naive parsing assuming space delimited
-        while (*p) {
-            if (current_col == target_col) {
-                // parse value
-                if (strncmp(p, "NA", 2) == 0) {
-                    val = MISSING_VALUE;
-                } else {
-                    char temp[100];
-                    int k=0;
-                    while (*p && !isspace(*p) && k<99) temp[k++] = *p++;
-                    temp[k] = '\0';
-                    if (strcmp(temp, "NA") == 0) {
-                         val = MISSING_VALUE;
-                    } else {
-                         val = atof(temp);
-                    }
-                }
-                found = 1;
-                break;
-            }
-            
-            // Skip word
-            while (*p && !isspace(*p)) p++;
-            // Skip space
-            while (*p && isspace(*p)) p++;
-            current_col++;
-        }
-        
-        if (found && val != MISSING_VALUE) { 
-             gdata->trains[i] = 0;
-             gdata->phenotypes[i] = val;
-        } else {
-             gdata->trains[i] = 1;
-             gdata->phenotypes[i] = MISSING_VALUE;
-        }
-    }
-    fclose(fp);
-}
-
-void load_snp_binary(ModelConfig *config, GenomicData *gdata) {
-    FILE *fp;
-    unsigned char b1, b2, b3;
-    double igen[4] = {0.0, 3.0, 1.0, 2.0}; // HomRef, Missing, Het, HomAlt (PLINK binary format)
-    
-    // allocate genotypes in COLUMN-MAJOR order: X[locus * nt + individual]
-    // This allows contiguous access when iterating over individuals for a given locus
-    gdata->genotypes = (double*)calloc(gdata->num_loci * gdata->num_phenotyped_individuals, sizeof(double));
-    
-    fp = fopen(config->genotype_file_path, "rb");
-    if (!fp) exit(1);
-    
-    // Header
-    if (fread(&b1, 1, 1, fp) != 1) { fclose(fp); exit(1); }
-    if (fread(&b2, 1, 1, fp) != 1) { fclose(fp); exit(1); }
-    if (fread(&b3, 1, 1, fp) != 1) { fclose(fp); exit(1); }
-    
-    int nbytes = (gdata->num_individuals + 3) / 4;
-    unsigned char *buffer = (unsigned char*)malloc(nbytes);
-    
-    for (int j = 0; j < gdata->num_loci; j++) {
-        if (fread(buffer, 1, nbytes, fp) != nbytes) break;
-        
-        int tr = 0; // index in training individuals
-        for (int i = 0; i < gdata->num_individuals; i++) {
-            int byte_idx = i / 4;
-            int bit_idx = (i % 4) * 2;
-            unsigned char b = buffer[byte_idx];
-            unsigned char code = (b >> bit_idx) & 3;
-            double val = igen[code];
-            
-            if (gdata->trains[i] == 0) {
-                // Column-major: X[j, tr] = X[j * nt + tr]
-                gdata->genotypes[j * gdata->num_phenotyped_individuals + tr] = val;
-                tr++;
-            }
-        }
-    }
-    
-    free(buffer);
-    fclose(fp);
-}
 
 void init_random_seed_custom(ModelConfig *config, prng_state *rs) {
     uint64_t seed[4];
@@ -154,7 +14,6 @@ void init_random_seed_custom(ModelConfig *config, prng_state *rs) {
 }
 
 void allocate_data(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MCMCStorage *mstore) {
-    // Determine nt, ntrain etc.
     if (!config->mcmc) {
         for(int i=0; i<gdata->num_individuals; i++) {
             if (gdata->trains[i] == 0) gdata->trains[i] = 3;
@@ -168,7 +27,6 @@ void allocate_data(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, M
     gdata->num_phenotyped_individuals = 0;
     for(int i=0; i<gdata->num_individuals; i++) if(gdata->trains[i]==0) gdata->num_phenotyped_individuals++;
     
-    // Allocations with NULL checking
     SAFE_CALLOC(gdata->predicted_values, gdata->num_individuals, double);
     
     SAFE_CALLOC(mstate->variance_scaling_factors, config->num_distributions, double);
@@ -200,7 +58,6 @@ void allocate_data(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, M
     
     SAFE_CALLOC(mstore->sum_snp_effects, gdata->num_loci, double);
     
-    // Rank 2 stores
     SAFE_MALLOC(mstore->sum_snps_per_distribution, config->num_distributions, double*);
     SAFE_MALLOC(mstore->sum_variance_per_distribution, config->num_distributions, double*);
     SAFE_MALLOC(mstore->sum_mixture_proportions, config->num_distributions, double*);
@@ -257,7 +114,7 @@ void load_param(ModelConfig *config, GenomicData *gdata, MCMCStorage *mstore, MC
     
     fp = fopen(config->param_file_path, "r");
     if(!fp) return;
-    if (!fgets(buffer, sizeof(buffer), fp)) { fclose(fp); free(gtemp); return; } // Header
+    if (!fgets(buffer, sizeof(buffer), fp)) { fclose(fp); free(gtemp); return; }
     
     for(int i=0; i<gdata->num_loci; i++) {
         for(int k=0; k<nc; k++) {
@@ -298,13 +155,10 @@ void load_categories(ModelConfig *config, GenomicData *gdata) {
         }
         fclose(fp);
     } else {
-        // Default: 1 category, all SNPs in it.
         if (config->num_categories == 1) {
             for(int i=0; i<gdata->num_loci; i++) {
                 gdata->categories[i][0] = 1;
             }
-        } else {
-             printf("Warning: ncat > 1 but no cat file provided. All categories set to 0.\n");
         }
     }
 }
@@ -329,7 +183,6 @@ void output_model(ModelConfig *config, GenomicData *gdata, MCMCStorage *mstore) 
     fp = fopen(config->param_file_path, "w");
     if (!fp) exit(1);
     
-    // Header
     fprintf(fp, "  ");
     for(int i=1; i<=config->num_distributions; i++) fprintf(fp, " PIP%-4d", i);
     fprintf(fp, "  beta");
@@ -381,14 +234,12 @@ void output_beta(ModelConfig *config, MCMCState *mstate, GenomicData *gdata) {
 void cleanup_data(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MCMCStorage *mstore) {
     int i;
     
-    // Close any open file handles
     if (config->fp_log) { fclose(config->fp_log); config->fp_log = NULL; }
     if (config->fp_hyp) { fclose(config->fp_hyp); config->fp_hyp = NULL; }
     if (config->fp_snp) { fclose(config->fp_snp); config->fp_snp = NULL; }
     if (config->fp_cat) { fclose(config->fp_cat); config->fp_cat = NULL; }
     if (config->fp_beta) { fclose(config->fp_beta); config->fp_beta = NULL; }
     
-    // Free GenomicData arrays
     SAFE_FREE(gdata->phenotypes);
     SAFE_FREE(gdata->predicted_values);
     SAFE_FREE(gdata->allele_frequencies);
@@ -403,7 +254,6 @@ void cleanup_data(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MC
     SAFE_FREE(gdata->permannot);
     SAFE_FREE(gdata->atemp);
     
-    // Free 2D arrays in GenomicData
     if (gdata->categories) {
         for (i = 0; i < gdata->num_loci; i++) {
             SAFE_FREE(gdata->categories[i]);
@@ -425,7 +275,6 @@ void cleanup_data(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MC
         SAFE_FREE(gdata->effects_per_category);
     }
     
-    // Free MCMCState arrays
     SAFE_FREE(mstate->genomic_values);
     SAFE_FREE(mstate->variance_scaling_factors);
     SAFE_FREE(mstate->dirichlet_priors);
@@ -443,7 +292,6 @@ void cleanup_data(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MC
     SAFE_FREE(mstate->residual_variance_over_distribution_variances);
     SAFE_FREE(mstate->z);
     
-    // Free 2D arrays in MCMCState
     if (mstate->variance_per_distribution) {
         for (i = 0; i < config->num_distributions; i++) {
             SAFE_FREE(mstate->variance_per_distribution[i]);
@@ -472,13 +320,11 @@ void cleanup_data(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MC
         SAFE_FREE(mstate->snps_per_distribution);
     }
     
-    // Free MCMCStorage arrays
     SAFE_FREE(mstore->sum_snp_effects);
     SAFE_FREE(mstore->mu_vare_store);
     SAFE_FREE(mstore->varustore);
     SAFE_FREE(mstore->varistore);
     
-    // Free 2D arrays in MCMCStorage
     if (mstore->sum_snps_per_distribution) {
         for (i = 0; i < config->num_distributions; i++) {
             SAFE_FREE(mstore->sum_snps_per_distribution[i]);

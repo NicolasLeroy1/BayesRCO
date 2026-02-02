@@ -3,8 +3,8 @@
 # Configuration
 TOY_DIR="toy_dataset"
 OUT_BM="outputs/benchmark"
-NUMIT=5000
-BURNIN=1000
+NUMIT=1000
+BURNIN=0
 
 BIN_REF="bin/bayesRCO_ref"
 BIN_NEW="bin/bayesRCO"

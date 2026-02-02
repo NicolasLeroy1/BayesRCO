@@ -161,8 +161,8 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
         }
         
         /* Compute RHS */
-        double rhs = dot_product_col(gdata->genotypes, snploc, 
-                                    mstate->adjusted_phenotypes, nt, nloci);
+        double rhs = dot_product_col(gdata->genotypes, snploc, nt, nloci, 
+                                    mstate->adjusted_phenotypes);
         
         /* Compute log selection probabilities */
         double *log_probs = mstate->log_likelihoods;
@@ -189,6 +189,10 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
         if (dist_idx == 0) {
             new_effect = 0.0;
         } else {
+            new_effect = sample_snp_effect(dist_idx, rhs, ssq,
+                                          mstate->variance_residual,
+                                          mstate->genomic_values, rs);
+            /* Subtract effect from adjusted phenotype */
             add_col_scalar(mstate->adjusted_phenotypes, gdata->genotypes,
                            snploc, nt, nloci, -new_effect);
             mstate->included++;

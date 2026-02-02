@@ -8,7 +8,7 @@
 
 #include "mcmc_utils.h"
 #include "utils.h"
-#include "io.h"
+#include "mcmc_core_io.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>

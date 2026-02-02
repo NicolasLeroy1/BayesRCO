@@ -16,7 +16,7 @@ PLOT_DIR = plots
 # Include modular definitions
 include $(SRC_DIR)/makefile.mk
 include $(REF_DIR)/makefile.mk
-include $(C_SRC_DIR)/makefile.mk
+# include $(C_SRC_DIR)/makefile.mk # No longer exists
 
 # Executables
 TARGET = $(BIN_DIR)/bayesRCO
@@ -26,7 +26,7 @@ TARGET_C = $(BIN_DIR)/bayesRCO_c
 # Objects (Derived from modular includes)
 OBJECTS = $(addprefix $(BUILD_DIR)/, $(NEW_MODULE_FILES:.f90=.o)) $(BUILD_DIR)/$(NEW_MAIN:.f90=.o)
 REF_OBJECTS = $(addprefix $(BUILD_REF_DIR)/, $(REF_MODULE_FILES:.f90=.o)) $(BUILD_REF_DIR)/$(REF_MAIN:.f90=.o)
-C_OBJECTS = $(addprefix $(BUILD_C_DIR)/, $(C_SOURCE_FILES:.c=.o))
+# C_OBJECTS = $(addprefix $(BUILD_C_DIR)/, $(C_SOURCE_FILES:.c=.o)) # Managed by sub-make
 
 .PHONY: all clean ref new c verify directories
 
@@ -73,11 +73,12 @@ $(BUILD_REF_DIR)/bayesRCO.o: $(REF_DIR)/bayesRCO.f90 $(BUILD_REF_DIR)/RandomDist
 # C version
 c: $(TARGET_C)
 
-$(TARGET_C): $(C_OBJECTS) | $(BIN_DIR)
-	$(CC) -O3 -o $@ $^ -lm
+$(TARGET_C): | $(BIN_DIR)
+	$(MAKE) -C $(C_SRC_DIR)
+	cp $(C_SRC_DIR)/clibayesrco/clibayesrco $@
 
-$(BUILD_C_DIR)/%.o: $(C_SRC_DIR)/%.c | $(BUILD_C_DIR)
-	$(CC) -O3 -I$(C_SRC_DIR) -c -o $@ $<
+# $(BUILD_C_DIR)/%.o: $(C_SRC_DIR)/%.c | $(BUILD_C_DIR)
+# 	$(CC) -O3 -I$(C_SRC_DIR) -c -o $@ $<
 
 # Helper to ensure directories exist
 $(BIN_DIR) $(BUILD_DIR) $(BUILD_REF_DIR) $(BUILD_C_DIR) $(OUT_DIR) $(PLOT_DIR):
@@ -85,7 +86,7 @@ $(BIN_DIR) $(BUILD_DIR) $(BUILD_REF_DIR) $(BUILD_C_DIR) $(OUT_DIR) $(PLOT_DIR):
 
 # Verification
 verify: all
-	./verify_equivalence.sh
+	./tests/equivalence/run_test.sh
 
 clean:
 	rm -rf $(BIN_DIR) $(BUILD_DIR) $(OUT_DIR) $(PLOT_DIR) out_ref out_new out_c out_benchmark debug_run debug_c

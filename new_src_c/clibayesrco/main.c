@@ -1,26 +1,15 @@
-/**
- * @file main.c
- * @brief Entry point for the BayesRCO C implementation.
- * 
- * Handles command-line parsing, configuration initialization, data loading,
- * and orchestrates the MCMC run.
- */
-
-#include "bayesRCO.h"
-#include "rng.h"
-#include "io.h"
-#include "utils.h"
-#include "mcmc.h"
+#include "../libbayesrco/bayesRCO.h"
+#include "../libbayesrco/rng.h"
+#include "../libbayesrco/utils.h"
+#include "../libbayesrco/mcmc.h"
+#include "../libbayesrco/mcmc_core_io.h"
+#include "../libplink/plink_io.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
-
-/* =========================================================================
- * Additional Constants
- * ========================================================================= */
 
 #define DEFAULT_VARIANCE_GENETIC 0.01
 #define DEFAULT_VARIANCE_RESIDUAL 0.01
@@ -29,43 +18,24 @@
 #define DEFAULT_DFVARA -2.0
 #define DEFAULT_DFVARE -2.0
 
-/* Default variance scaling factors for 4 distributions */
 static const double GPIN_DEFAULTS[DEFAULT_NUM_DISTRIBUTIONS] = {0.0, 0.0001, 0.001, 0.01};
 
-/* =========================================================================
- * Helper Functions
- * ========================================================================= */
-
-/**
- * Check if a file exists and is accessible.
- */
 static bool file_exists(const char *filename) {
     return access(filename, F_OK) != -1;
 }
 
-/**
- * Safe string copy with bounds checking.
- */
 static void safe_strcpy(char *dest, const char *src, size_t dest_size) {
     if (dest_size == 0) return;
     strncpy(dest, src, dest_size - 1);
     dest[dest_size - 1] = '\0';
 }
 
-/**
- * Parse a comma-separated list of doubles.
- * Returns the count of parsed values, or -1 on error.
- */
 static int parse_double_list(const char *arg, double **out_array) {
     if (!arg || !out_array) return -1;
-    
-    /* Make a copy since strtok modifies the string */
     char *arg_copy = strdup(arg);
     if (!arg_copy) return -1;
-    
     int count = 0;
     double *array = NULL;
-    
     char *token = strtok(arg_copy, ",");
     while (token) {
         count++;
@@ -79,15 +49,11 @@ static int parse_double_list(const char *arg, double **out_array) {
         array[count - 1] = atof(token);
         token = strtok(NULL, ",");
     }
-    
     free(arg_copy);
     *out_array = array;
     return count;
 }
 
-/**
- * Print usage information and exit.
- */
 static void print_usage(const char *program_name) {
     fprintf(stderr, "Usage: %s [options]\n\n", program_name);
     fprintf(stderr, "Required:\n");
@@ -119,14 +85,9 @@ static void print_usage(const char *program_name) {
     fprintf(stderr, "  -h               Show this help message\n");
 }
 
-/**
- * Initialize configuration with default values.
- */
 static void init_default_config(ModelConfig *config, MCMCState *mstate) {
     memset(config, 0, sizeof(ModelConfig));
     memset(mstate, 0, sizeof(MCMCState));
-    
-    /* Algorithm parameters */
     config->trait_column_index = 1;
     config->marker_set_size = 0;
     config->marker_replicates = DEFAULT_MARKER_REPLICATES;
@@ -136,14 +97,10 @@ static void init_default_config(ModelConfig *config, MCMCState *mstate) {
     config->num_distributions = DEFAULT_NUM_DISTRIBUTIONS;
     config->num_categories = DEFAULT_NUM_CATEGORIES;
     config->random_seed = 0;
-    
-    /* Hyperparameters */
     config->dfvara = DEFAULT_DFVARA;
     config->dfvare = DEFAULT_DFVARE;
     mstate->variance_genetic = DEFAULT_VARIANCE_GENETIC;
     mstate->variance_residual = DEFAULT_VARIANCE_RESIDUAL;
-    
-    /* Flags */
     config->mcmc = true;
     config->snpout = false;
     config->permute = false;
@@ -154,14 +111,10 @@ static void init_default_config(ModelConfig *config, MCMCState *mstate) {
     config->VCE = false;
 }
 
-/**
- * Derive output file paths from prefix.
- */
 static void derive_file_paths(ModelConfig *config) {
     snprintf(config->genotype_file_path, PATH_MAX_LENGTH, "%s.bed", config->input_prefix);
     snprintf(config->phenotype_file_path, PATH_MAX_LENGTH, "%s.fam", config->input_prefix);
     snprintf(config->bim_file_path, PATH_MAX_LENGTH, "%s.bim", config->input_prefix);
-    
     if (strlen(config->output_prefix) > 0) {
         snprintf(config->log_file_path, PATH_MAX_LENGTH, "%s.log", config->output_prefix);
         snprintf(config->freq_file_path, PATH_MAX_LENGTH, "%s.frq", config->output_prefix);
@@ -175,14 +128,9 @@ static void derive_file_paths(ModelConfig *config) {
     }
 }
 
-/**
- * Initialize variance component estimation parameters.
- */
 static void init_variance_components(ModelConfig *config, GenomicData *gdata, MCMCState *mstate) {
     if (config->dfvara < DEFAULT_DFVARA) {
         config->VCE = false;
-        
-        /* Compute mean phenotype for training individuals */
         double sum_y = 0.0;
         int count = 0;
         for (int i = 0; i < gdata->num_individuals; i++) {
@@ -192,8 +140,6 @@ static void init_variance_components(ModelConfig *config, GenomicData *gdata, MC
             }
         }
         mstate->yhat = sum_y / mstate->nnind;
-        
-        /* Compute phenotype variance */
         double sum_sq = 0.0;
         for (int i = 0; i < gdata->num_individuals; i++) {
             if (gdata->trains[i] == 0) {
@@ -212,18 +158,13 @@ static void init_variance_components(ModelConfig *config, GenomicData *gdata, MC
     }
 }
 
-/**
- * Open log file and write header.
- */
 static bool init_logging(ModelConfig *config) {
     config->fp_log = fopen(config->log_file_path, "w");
     if (!config->fp_log) {
         fprintf(stderr, "Error: Cannot open log file: %s\n", config->log_file_path);
         return false;
     }
-    
     fprintf(config->fp_log, "Program BayesRCO C Port\n");
-    
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
     char datetime[64];
@@ -231,13 +172,8 @@ static bool init_logging(ModelConfig *config) {
     fprintf(config->fp_log, "Run started at %s\n", datetime);
     fprintf(config->fp_log, "Prefix for input files           : %s\n", config->input_prefix);
     fprintf(config->fp_log, "Prefix for output files          : %s\n", config->output_prefix);
-    
     return true;
 }
-
-/* =========================================================================
- * Main Entry Point
- * ========================================================================= */
 
 int main(int argc, char **argv) {
     ModelConfig config;
@@ -246,24 +182,20 @@ int main(int argc, char **argv) {
     MCMCStorage mstore;
     prng_state rs;
     
-    /* Initialize with defaults */
     init_default_config(&config, &mstate);
     memset(&gdata, 0, sizeof(GenomicData));
     memset(&mstore, 0, sizeof(MCMCStorage));
     
-    /* Temporary storage for array arguments */
     int gpin_count = 0;
     double *gpin_args = NULL;
     int delta_count = 0;
     double *delta_args = NULL;
     
-    /* Print usage if no arguments */
     if (argc == 1) {
         print_usage(argv[0]);
         return 0;
     }
     
-    /* Parse command-line arguments */
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-bfile") == 0) {
             if (i + 1 < argc) safe_strcpy(config.input_prefix, argv[++i], PATH_MAX_LENGTH);
@@ -282,10 +214,7 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-delta") == 0) {
             if (i + 1 < argc) {
                 delta_count = parse_double_list(argv[++i], &delta_args);
-                if (delta_count < 0) {
-                    fprintf(stderr, "Error: Failed to parse -delta argument\n");
-                    return 1;
-                }
+                if (delta_count < 0) return 1;
             }
         } else if (strcmp(argv[i], "-msize") == 0) {
             if (i + 1 < argc) config.marker_set_size = atoi(argv[++i]);
@@ -304,7 +233,6 @@ int main(int argc, char **argv) {
             if (i + 1 < argc) {
                 gpin_count = parse_double_list(argv[++i], &gpin_args);
                 if (gpin_count < 0) {
-                    fprintf(stderr, "Error: Failed to parse -gpin argument\n");
                     free(delta_args);
                     return 1;
                 }
@@ -317,12 +245,6 @@ int main(int argc, char **argv) {
             config.snpout = true;
         } else if (strcmp(argv[i], "-permute") == 0) {
             config.permute = true;
-        } else if (strcmp(argv[i], "-model") == 0) {
-            if (i + 1 < argc) safe_strcpy(config.model_file_path, argv[++i], PATH_MAX_LENGTH);
-        } else if (strcmp(argv[i], "-freq") == 0) {
-            if (i + 1 < argc) safe_strcpy(config.freq_file_path, argv[++i], PATH_MAX_LENGTH);
-        } else if (strcmp(argv[i], "-param") == 0) {
-            if (i + 1 < argc) safe_strcpy(config.param_file_path, argv[++i], PATH_MAX_LENGTH);
         } else if (strcmp(argv[i], "-cat") == 0) {
             config.cat = true;
         } else if (strcmp(argv[i], "-beta") == 0) {
@@ -337,158 +259,55 @@ int main(int argc, char **argv) {
             config.nobayesCpi = false;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
-            free(gpin_args);
-            free(delta_args);
+            free(gpin_args); free(delta_args);
             return 0;
-        } else {
-            fprintf(stderr, "Warning: Unknown option '%s'\n", argv[i]);
         }
     }
     
-    /* Validate required inputs */
-    if (strlen(config.input_prefix) == 0 && config.mcmc) {
-        fprintf(stderr, "Error: -bfile is required for MCMC run\n");
-        free(gpin_args);
-        free(delta_args);
-        return 1;
-    }
-    
-    /* Derive file paths */
+    if (strlen(config.input_prefix) == 0 && config.mcmc) return 1;
     derive_file_paths(&config);
+    if (config.mcmc && !file_exists(config.genotype_file_path)) return 1;
+    if (!init_logging(&config)) return 1;
     
-    /* Check input files exist */
-    if (config.mcmc) {
-        if (!file_exists(config.genotype_file_path)) {
-            fprintf(stderr, "Error: File not found: %s\n", config.genotype_file_path);
-            free(gpin_args);
-            free(delta_args);
-            return 1;
-        }
-    }
-    
-    /* Initialize logging */
-    if (!init_logging(&config)) {
-        free(gpin_args);
-        free(delta_args);
-        return 1;
-    }
-    
-    /* Load data */
     get_size(&config, &gdata);
     load_phenos_plink(&config, &gdata);
     allocate_data(&config, &gdata, &mstate, &mstore);
     
-    /* Set variance scaling factors */
     if (gpin_count > 0) {
-        if (gpin_count != config.num_distributions) {
-            fprintf(stderr, "Error: -gpin count (%d) must match -ndist (%d)\n", 
-                    gpin_count, config.num_distributions);
-            cleanup_data(&config, &gdata, &mstate, &mstore);
-            free(gpin_args);
-            free(delta_args);
-            return 1;
-        }
-        for (int i = 0; i < config.num_distributions; i++) {
-            mstate.variance_scaling_factors[i] = gpin_args[i];
-        }
+        for (int i = 0; i < config.num_distributions; i++) mstate.variance_scaling_factors[i] = gpin_args[i];
     } else {
-        /* Use defaults, extending with zeros if needed */
         for (int i = 0; i < config.num_distributions; i++) {
-            if (i < DEFAULT_NUM_DISTRIBUTIONS) {
-                mstate.variance_scaling_factors[i] = GPIN_DEFAULTS[i];
-            } else {
-                mstate.variance_scaling_factors[i] = 0.0;
-            }
+            if (i < DEFAULT_NUM_DISTRIBUTIONS) mstate.variance_scaling_factors[i] = GPIN_DEFAULTS[i];
+            else mstate.variance_scaling_factors[i] = 0.0;
         }
     }
     free(gpin_args);
-    gpin_args = NULL;
     
-    /* Set Dirichlet priors */
     if (delta_count > 0) {
-        if (delta_count == 1) {
-            for (int i = 0; i < config.num_distributions; i++) {
-                mstate.dirichlet_priors[i] = delta_args[0];
-            }
-        } else if (delta_count == config.num_distributions) {
-            for (int i = 0; i < config.num_distributions; i++) {
-                mstate.dirichlet_priors[i] = delta_args[i];
-            }
-        } else {
-            fprintf(stderr, "Error: -delta count must be 1 or match -ndist\n");
-            cleanup_data(&config, &gdata, &mstate, &mstore);
-            free(delta_args);
-            return 1;
-        }
+        for (int i = 0; i < config.num_distributions; i++) 
+            mstate.dirichlet_priors[i] = (delta_count == 1) ? delta_args[0] : delta_args[i];
     } else {
-        for (int i = 0; i < config.num_distributions; i++) {
-            mstate.dirichlet_priors[i] = DEFAULT_DIRICHLET_PRIOR;
-        }
+        for (int i = 0; i < config.num_distributions; i++) mstate.dirichlet_priors[i] = DEFAULT_DIRICHLET_PRIOR;
     }
     free(delta_args);
-    delta_args = NULL;
     
-    /* Load annotation categories */
     load_categories(&config, &gdata);
-    
-    /* Log data summary */
-    if (config.mcmc && config.fp_log) {
-        fprintf(config.fp_log, "Phenotype column               = %8d\n", config.trait_column_index);
-        fprintf(config.fp_log, "No. of loci                    = %8d\n", gdata.num_loci);
-        fprintf(config.fp_log, "No. of individuals             = %8d\n", gdata.num_individuals);
-        fprintf(config.fp_log, "No. of training individuals    = %8d\n", gdata.num_phenotyped_individuals);
-        fflush(config.fp_log);
-    }
-    
-    /* Load genotypes and initialize */
     load_snp_binary(&config, &gdata);
     xcenter(&config, &gdata);
     init_random_seed_custom(&config, &rs);
     
     if (config.mcmc) {
         mstate.nnind = (double)gdata.num_phenotyped_individuals;
-        
-        /* Open output files */
-        if (config.snpout) {
-            config.fp_snp = fopen(config.snp_file_path, "w");
-            if (!config.fp_snp) {
-                fprintf(stderr, "Warning: Cannot open SNP output file: %s\n", config.snp_file_path);
-            }
-        }
-        if (config.cat) {
-            config.fp_cat = fopen(config.cat_file_path, "w");
-            if (!config.fp_cat) {
-                fprintf(stderr, "Warning: Cannot open category output file: %s\n", config.cat_file_path);
-            }
-        }
-        if (config.beta) {
-            config.fp_beta = fopen(config.beta_file_path, "w");
-            if (!config.fp_beta) {
-                fprintf(stderr, "Warning: Cannot open beta output file: %s\n", config.beta_file_path);
-            }
-        }
-        
+        if (config.snpout) config.fp_snp = fopen(config.snp_file_path, "w");
+        if (config.cat) config.fp_cat = fopen(config.cat_file_path, "w");
+        if (config.beta) config.fp_beta = fopen(config.beta_file_path, "w");
         config.fp_hyp = fopen(config.hyp_file_path, "w");
-        if (config.fp_hyp) {
-            fprintf(config.fp_hyp, " Replicate       Nsnp              Va              Ve ");
-            fprintf(config.fp_hyp, "\n");
-        } else {
-            fprintf(stderr, "Warning: Cannot open hyperparameter file: %s\n", config.hyp_file_path);
-        }
+        if (config.fp_hyp) fprintf(config.fp_hyp, " Replicate       Nsnp              Va              Ve \n");
         
-        /* Initialize variance components */
         init_variance_components(&config, &gdata, &mstate);
-        
-        /* Run MCMC */
         run_mcmc(&config, &gdata, &mstate, &mstore, &rs);
-        
-    } else {
-        /* Prediction mode */
-        fprintf(stderr, "Prediction mode not fully implemented in C port yet.\n");
     }
     
-    /* Cleanup all allocated memory and close file handles */
     cleanup_data(&config, &gdata, &mstate, &mstore);
-    
     return 0;
 }

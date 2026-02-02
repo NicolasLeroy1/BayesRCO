@@ -42,8 +42,8 @@ void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
         }
         
         /* Compute RHS: X'y_adj */
-        double rhs = dot_product_col(gdata->genotypes, snploc, 
-                                    mstate->adjusted_phenotypes, nt, nloci);
+        double rhs = dot_product_col(gdata->genotypes, snploc, nt, nloci,
+                                    mstate->adjusted_phenotypes);
         
         /* Process each category in permuted order */
         for (int kcat = 0; kcat < ncat; kcat++) {

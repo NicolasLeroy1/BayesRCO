@@ -4,7 +4,7 @@
 #include "mcmc_additive.h"
 #include "mcmc_bayesCpi.h"
 #include "utils.h"
-#include "io.h"
+#include "mcmc_core_io.h"
 
 // -------------------------------------------------------------------------
 // Main Driver

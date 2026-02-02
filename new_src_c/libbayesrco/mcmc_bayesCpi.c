@@ -93,8 +93,8 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             }
             
             /* Compute right-hand side: X'y_adj */
-            double rhs = dot_product_col(gdata->genotypes, snploc, 
-                                        mstate->adjusted_phenotypes, nt, nloci);
+            double rhs = dot_product_col(gdata->genotypes, snploc, nt, nloci,
+                                        mstate->adjusted_phenotypes);
             
             /* Compute log selection probabilities */
             /* Note: need to build log_mix_probs array for column j */
