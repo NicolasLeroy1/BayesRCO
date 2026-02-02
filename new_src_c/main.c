@@ -31,35 +31,33 @@ int main(int argc, char **argv) {
     memset(&mstore, 0, sizeof(MCMCStorage));
 
     // Defaults from mod_cmd.f90
-    config.trait_pos = 1;
-    mstate.vara = 0.01;
-    mstate.vare = 0.01;
+    config.trait_column_index = 1;
+    mstate.variance_genetic = 0.01;
+    mstate.variance_residual = 0.01;
     config.dfvara = -2.0;
     config.dfvare = -2.0;
-    // delta default 1.0, but handled as array usually
-    // mod_data says real(dp) :: delta (allocatable)
-    // We will allocate delta later, but need initial value.
+    
     double delta_default = 1.0;
     
-    config.msize = 0;
-    config.mrep = 5000;
-    config.numit = 50000;
-    config.burnin = 20000;
-    config.thin = 10;
-    config.ndist = 4;
-    // gpin default: 0.0, 0.0001, 0.001, 0.01 (Wait, 4 values)
+    config.marker_set_size = 0;
+    config.marker_replicates = 5000;
+    config.num_iterations = 50000;
+    config.burnin_iterations = 20000;
+    config.thinning_interval = 10;
+    config.num_distributions = 4;
+    
     double gpin_defaults[] = {0.0, 0.0001, 0.001, 0.01};
     int gpin_defaults_len = 4;
     
-    config.seed1 = 0;
+    config.random_seed = 0;
     config.mcmc = true; // -predict defaults false -> mcmc true
     config.snpout = false;
     config.permute = false;
     config.cat = false;
     config.beta = false;
-    config.ncat = 1;
-    config.mixture = true; // -additive defaults false -> mixture true
-    config.nobayesCpi = true; // -bayesCpi defaults false -> nobayesCpi true
+    config.num_categories = 1;
+    config.mixture = true; 
+    config.nobayesCpi = true; 
     
     // Command line parsing
     if (argc == 1) {
@@ -75,15 +73,15 @@ int main(int argc, char **argv) {
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-bfile") == 0) {
-            if (i+1 < argc) strcpy(config.inprefix, argv[++i]);
+            if (i+1 < argc) strcpy(config.input_prefix, argv[++i]);
         } else if (strcmp(argv[i], "-out") == 0) {
-            if (i+1 < argc) strcpy(config.outprefix, argv[++i]);
+            if (i+1 < argc) strcpy(config.output_prefix, argv[++i]);
         } else if (strcmp(argv[i], "-n") == 0) {
-            if (i+1 < argc) config.trait_pos = atoi(argv[++i]);
+            if (i+1 < argc) config.trait_column_index = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-vara") == 0) {
-            if (i+1 < argc) mstate.vara = atof(argv[++i]);
+            if (i+1 < argc) mstate.variance_genetic = atof(argv[++i]);
         } else if (strcmp(argv[i], "-vare") == 0) {
-            if (i+1 < argc) mstate.vare = atof(argv[++i]);
+            if (i+1 < argc) mstate.variance_residual = atof(argv[++i]);
         } else if (strcmp(argv[i], "-dfvara") == 0) {
             if (i+1 < argc) config.dfvara = atof(argv[++i]);
         } else if (strcmp(argv[i], "-dfvare") == 0) {
@@ -100,18 +98,18 @@ int main(int argc, char **argv) {
                 }
             }
         } else if (strcmp(argv[i], "-msize") == 0) {
-            if (i+1 < argc) config.msize = atoi(argv[++i]);
+            if (i+1 < argc) config.marker_set_size = atoi(argv[++i]);
             config.permute = true;
         } else if (strcmp(argv[i], "-mrep") == 0) {
-            if (i+1 < argc) config.mrep = atoi(argv[++i]);
+            if (i+1 < argc) config.marker_replicates = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-numit") == 0) {
-            if (i+1 < argc) config.numit = atoi(argv[++i]);
+            if (i+1 < argc) config.num_iterations = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-burnin") == 0) {
-            if (i+1 < argc) config.burnin = atoi(argv[++i]);
+            if (i+1 < argc) config.burnin_iterations = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-thin") == 0) {
-            if (i+1 < argc) config.thin = atoi(argv[++i]);
+            if (i+1 < argc) config.thinning_interval = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-ndist") == 0) {
-            if (i+1 < argc) config.ndist = atoi(argv[++i]);
+            if (i+1 < argc) config.num_distributions = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-gpin") == 0) {
             if (i+1 < argc) {
                 char *token = strtok(argv[++i], ",");
@@ -123,7 +121,7 @@ int main(int argc, char **argv) {
                 }
             }
         } else if (strcmp(argv[i], "-seed") == 0) {
-            if (i+1 < argc) config.seed1 = atoi(argv[++i]);
+            if (i+1 < argc) config.random_seed = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-predict") == 0) {
             config.mcmc = false;
         } else if (strcmp(argv[i], "-snpout") == 0) {
@@ -131,19 +129,19 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-permute") == 0) {
             config.permute = true;
         } else if (strcmp(argv[i], "-model") == 0) {
-             if (i+1 < argc) strcpy(config.modfil, argv[++i]);
+             if (i+1 < argc) strcpy(config.model_file_path, argv[++i]);
         } else if (strcmp(argv[i], "-freq") == 0) {
-             if (i+1 < argc) strcpy(config.freqfil, argv[++i]);
+             if (i+1 < argc) strcpy(config.freq_file_path, argv[++i]);
         } else if (strcmp(argv[i], "-param") == 0) {
-             if (i+1 < argc) strcpy(config.paramfil, argv[++i]);
+             if (i+1 < argc) strcpy(config.param_file_path, argv[++i]);
         } else if (strcmp(argv[i], "-cat") == 0) {
             config.cat = true;
         } else if (strcmp(argv[i], "-beta") == 0) {
             config.beta = true;
         } else if (strcmp(argv[i], "-ncat") == 0) {
-             if (i+1 < argc) config.ncat = atoi(argv[++i]);
+             if (i+1 < argc) config.num_categories = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-catfile") == 0) {
-             if (i+1 < argc) strcpy(config.catRC, argv[++i]);
+             if (i+1 < argc) strcpy(config.cat_input_file_path, argv[++i]);
         } else if (strcmp(argv[i], "-additive") == 0) {
             config.mixture = false;
         } else if (strcmp(argv[i], "-bayesCpi") == 0) {
@@ -155,36 +153,36 @@ int main(int argc, char **argv) {
     }
     
     // Validate inputs
-    if (strlen(config.inprefix) == 0 && config.mcmc) {
+    if (strlen(config.input_prefix) == 0 && config.mcmc) {
         printf("Error: -bfile is required for MCMC run\n");
         exit(1);
     }
     
     // Derived file paths
-    sprintf(config.genfil, "%s.bed", config.inprefix);
-    sprintf(config.phenfil, "%s.fam", config.inprefix);
-    sprintf(config.bimfil, "%s.bim", config.inprefix);
-    if (strlen(config.outprefix) > 0) {
-        sprintf(config.logfil, "%s.log", config.outprefix);
-        sprintf(config.freqfil, "%s.frq", config.outprefix);
-        sprintf(config.mbvfil, "%s.gv", config.outprefix);
-        sprintf(config.hypfil, "%s.hyp", config.outprefix);
-        sprintf(config.locfil, "%s.snp", config.outprefix);
-        sprintf(config.catfil, "%s.catit", config.outprefix);
-        sprintf(config.betafil, "%s.beta", config.outprefix);
-        sprintf(config.modfil, "%s.model", config.outprefix);
-        sprintf(config.paramfil, "%s.param", config.outprefix);
+    sprintf(config.genotype_file_path, "%s.bed", config.input_prefix);
+    sprintf(config.phenotype_file_path, "%s.fam", config.input_prefix);
+    sprintf(config.bim_file_path, "%s.bim", config.input_prefix);
+    if (strlen(config.output_prefix) > 0) {
+        sprintf(config.log_file_path, "%s.log", config.output_prefix);
+        sprintf(config.freq_file_path, "%s.frq", config.output_prefix);
+        sprintf(config.gv_file_path, "%s.gv", config.output_prefix);
+        sprintf(config.hyp_file_path, "%s.hyp", config.output_prefix);
+        sprintf(config.snp_file_path, "%s.snp", config.output_prefix);
+        sprintf(config.cat_file_path, "%s.catit", config.output_prefix);
+        sprintf(config.beta_file_path, "%s.beta", config.output_prefix);
+        sprintf(config.model_file_path, "%s.model", config.output_prefix);
+        sprintf(config.param_file_path, "%s.param", config.output_prefix);
     }
 
     if (config.mcmc) {
-        if (!file_exists(config.genfil)) { printf("File not found: %s\n", config.genfil); exit(1); }
+        if (!file_exists(config.genotype_file_path)) { printf("File not found: %s\n", config.genotype_file_path); exit(1); }
     } else {
         // Checking predict files?
     }
     
     // Init Logging
     if (config.mcmc) {
-        config.fp_log = fopen(config.logfil, "w");
+        config.fp_log = fopen(config.log_file_path, "w");
         if (config.fp_log) {
             fprintf(config.fp_log, "Program BayesRCO C Port\n");
             // Add date/time logic
@@ -194,13 +192,13 @@ int main(int argc, char **argv) {
             strftime(cdate, sizeof(cdate), "%Y%m%d", t);
             strftime(ctime_str, sizeof(ctime_str), "%H%M%S", t);
             fprintf(config.fp_log, "Run started at %s %s\n", cdate, ctime_str);
-            fprintf(config.fp_log, "Prefix for input files           : %s\n", config.inprefix);
-            fprintf(config.fp_log, "Prefix for output files          : %s\n", config.outprefix);
+            fprintf(config.fp_log, "Prefix for input files           : %s\n", config.input_prefix);
+            fprintf(config.fp_log, "Prefix for output files          : %s\n", config.output_prefix);
             // ... more logging matching Fortran
         }
     } else {
         // Predict logging
-        config.fp_log = fopen(config.logfil, "w"); 
+        config.fp_log = fopen(config.log_file_path, "w"); 
         fprintf(config.fp_log, "Program BayesR C Port\n");
     }
     
@@ -208,30 +206,26 @@ int main(int argc, char **argv) {
     get_size(&config, &gdata);
     load_phenos_plink(&config, &gdata);
     
-    // Allocations handled in allocate_data for arrays dependent on gpin?
-    // Note: gpin needs to be allocated in mstate before usage? 
-    // allocate_data allocates mstate->gpin.
-    // So we should temporarily store gpin args, and fill after allocation.
-    
+    // Allocations handled in allocate_data
     allocate_data(&config, &gdata, &mstate, &mstore);
     
     // Parse Priors Logic (filling allocated arrays)
     if (gpin_count > 0) {
-        if (gpin_count != config.ndist) {
+        if (gpin_count != config.num_distributions) {
              printf("Error: -gpin count mismatch with -ndist\n");
              exit(1);
         }
-        for(int i=0; i<config.ndist; i++) mstate.gpin[i] = gpin_args[i];
+        for(int i=0; i<config.num_distributions; i++) mstate.variance_scaling_factors[i] = gpin_args[i];
     } else {
-        if (config.ndist != 4) {
+        if (config.num_distributions != 4) {
              // If ndist changed but no gpin provided, we might have issue if defaults assume 4
              // For now use defaults up to 4 or 0 if more?
-             for(int i=0; i<config.ndist; i++) {
-                 if(i < 4) mstate.gpin[i] = gpin_defaults[i];
-                 else mstate.gpin[i] = 0.0;
+             for(int i=0; i<config.num_distributions; i++) {
+                 if(i < 4) mstate.variance_scaling_factors[i] = gpin_defaults[i];
+                 else mstate.variance_scaling_factors[i] = 0.0;
              }
         } else {
-             for(int i=0; i<4; i++) mstate.gpin[i] = gpin_defaults[i];
+             for(int i=0; i<4; i++) mstate.variance_scaling_factors[i] = gpin_defaults[i];
         }
     }
     if (gpin_args) free(gpin_args);
@@ -239,15 +233,15 @@ int main(int argc, char **argv) {
     // Delta
     if (delta_count > 0) {
         if (delta_count == 1) {
-            for(int i=0; i<config.ndist; i++) mstate.delta[i] = delta_args[0];
-        } else if (delta_count == config.ndist) {
-            for(int i=0; i<config.ndist; i++) mstate.delta[i] = delta_args[i];
+            for(int i=0; i<config.num_distributions; i++) mstate.dirichlet_priors[i] = delta_args[0];
+        } else if (delta_count == config.num_distributions) {
+            for(int i=0; i<config.num_distributions; i++) mstate.dirichlet_priors[i] = delta_args[i];
         } else {
              printf("Error: -delta count must be 1 or ndist\n");
              exit(1);
         }
     } else {
-        for(int i=0; i<config.ndist; i++) mstate.delta[i] = delta_default;
+        for(int i=0; i<config.num_distributions; i++) mstate.dirichlet_priors[i] = delta_default;
     }
     if (delta_args) free(delta_args);
     
@@ -256,11 +250,10 @@ int main(int argc, char **argv) {
     if (config.mcmc) {
         // Logging continued
         if (config.fp_log) {
-            fprintf(config.fp_log, "Phenotype column               = %8d\n", config.trait_pos);
-            fprintf(config.fp_log, "No. of loci                    = %8d\n", gdata.nloci);
-            fprintf(config.fp_log, "No. of individuals             = %8d\n", gdata.nind);
-            fprintf(config.fp_log, "No. of training individuals    = %8d\n", gdata.nt);
-            // ...
+            fprintf(config.fp_log, "Phenotype column               = %8d\n", config.trait_column_index);
+            fprintf(config.fp_log, "No. of loci                    = %8d\n", gdata.num_loci);
+            fprintf(config.fp_log, "No. of individuals             = %8d\n", gdata.num_individuals);
+            fprintf(config.fp_log, "No. of training individuals    = %8d\n", gdata.num_phenotyped_individuals);
             fflush(config.fp_log);
         }
     }
@@ -270,14 +263,14 @@ int main(int argc, char **argv) {
     init_random_seed_custom(&config, &rs);
 
     if (config.mcmc) {
-        mstate.nnind = (double)gdata.nt;
+        mstate.nnind = (double)gdata.num_phenotyped_individuals;
         
         // Open output files
-        if (config.snpout) config.fp_loc = fopen(config.locfil, "w");
-        if (config.cat) config.fp_cat = fopen(config.catfil, "w");
-        if (config.beta) config.fp_beta = fopen(config.betafil, "w");
+        if (config.snpout) config.fp_snp = fopen(config.snp_file_path, "w");
+        if (config.cat) config.fp_cat = fopen(config.cat_file_path, "w");
+        if (config.beta) config.fp_beta = fopen(config.beta_file_path, "w");
         
-        config.fp_hyp = fopen(config.hypfil, "w");
+        config.fp_hyp = fopen(config.hyp_file_path, "w");
         if (config.fp_hyp) {
              fprintf(config.fp_hyp, " Replicate       Nsnp              Va              Ve "); // Header matching Fortran
              // ...
@@ -290,27 +283,27 @@ int main(int argc, char **argv) {
             // Replicate Fortran logic: calc yhat, vary, update vara
             double sum_y = 0.0;
             int cnt = 0;
-            for(int i=0; i<gdata.nind; i++) {
+            for(int i=0; i<gdata.num_individuals; i++) {
                 if (gdata.trains[i] == 0) {
-                    sum_y += gdata.why[i];
+                    sum_y += gdata.phenotypes[i];
                     cnt++;
                 }
             }
             mstate.yhat = sum_y / mstate.nnind;
             
             double sum_sq = 0.0;
-            for(int i=0; i<gdata.nind; i++) {
+            for(int i=0; i<gdata.num_individuals; i++) {
                 if (gdata.trains[i] == 0) {
-                    double diff = gdata.why[i] - mstate.yhat;
+                    double diff = gdata.phenotypes[i] - mstate.yhat;
                     sum_sq += diff * diff;
                 }
             }
             mstate.vary = sum_sq / (mstate.nnind - 1.0);
-            mstate.vara = mstate.vara * mstate.vary;
+            mstate.variance_genetic = mstate.variance_genetic * mstate.vary;
         } else {
             config.VCE = true;
-            config.vara_ap = mstate.vara;
-            config.vare_ap = mstate.vare;
+            config.vara_ap = mstate.variance_genetic;
+            config.vare_ap = mstate.variance_residual;
             if (config.dfvara == -2.0) config.vara_ap = 0.0;
             if (config.dfvare == -2.0) config.vare_ap = 0.0;
         }
@@ -325,9 +318,8 @@ int main(int argc, char **argv) {
         printf("Prediction mode not fully implemented in C port yet.\n");
     }
 
-    // Cleanup
-    if (config.fp_log) fclose(config.fp_log);
-    // Free memory...
+    // Cleanup all allocated memory and close file handles
+    cleanup_data(&config, &gdata, &mstate, &mstore);
 
     return 0;
 }

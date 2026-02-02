@@ -1,3 +1,11 @@
+/**
+ * @file mcmc_utils.c
+ * @brief Common MCMC utility functions.
+ * 
+ * Contains shared functions for MCMC initialization, iteration updates,
+ * hyperparameter sampling, and sample accumulation.
+ */
+
 #include "mcmc_utils.h"
 #include "utils.h"
 #include "io.h"
@@ -5,88 +13,105 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Helper for dot product of row with yadj/vec
-// Assuming X is row-major (nt x nloci)
-// BUT in kernels we often access X(:, snploc) which is a COLUMN.
-// If X is row-major, column access is stride = nloci.
-// Using helper for column dot product.
+/* =========================================================================
+ * Matrix Helper Functions
+ * ========================================================================= */
 
+/**
+ * Compute dot product of a column with a vector.
+ * Assumes column-major storage: X[col_idx * n_rows + row]
+ */
 double dot_product_col(double *X, int col_idx, int n_rows, int n_cols, double *vec) {
     double sum = 0.0;
     for (int i = 0; i < n_rows; i++) {
-        sum += X[i * n_cols + col_idx] * vec[i];
+        sum += X[col_idx * n_rows + i] * vec[i];
     }
     return sum;
 }
 
-// Helper to add/sub column * scalar to vec
+/**
+ * Add column * scalar to vector: vec += X[:, col_idx] * scalar
+ * Assumes column-major storage.
+ */
 void add_col_scalar(double *vec, double *X, int col_idx, int n_rows, int n_cols, double scalar) {
     for (int i = 0; i < n_rows; i++) {
-        vec[i] += X[i * n_cols + col_idx] * scalar;
+        vec[i] += X[col_idx * n_rows + i] * scalar;
     }
 }
 
-// -------------------------------------------------------------------------
-// Helper for random choice
-// -------------------------------------------------------------------------
+/* =========================================================================
+ * Random Sampling Helpers
+ * ========================================================================= */
+
+/**
+ * Sample from a discrete distribution given probabilities.
+ */
 int sample_discrete(double *probs, int n, prng_state *rs) {
-    double r = rand_uniform(rs, 0.0, 1.0);
+    double r = rng_uniform(rs, 0.0, 1.0);
     double sum = 0.0;
-    for(int i=0; i<n; i++) {
+    for (int i = 0; i < n; i++) {
         sum += probs[i];
         if (r < sum) return i;
     }
-    return n-1;
+    return n - 1;
 }
 
-// -------------------------------------------------------------------------
-// MCMC Common Utils (from mod_mcmc_utils.f90)
-// -------------------------------------------------------------------------
+/* =========================================================================
+ * MCMC Common Functions
+ * ========================================================================= */
 
+/**
+ * Save samples for posterior summary.
+ * Accumulates SNP effects, variances, and hyperparameters.
+ */
 void mcmc_save_samples_common(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MCMCStorage *mstore) {
+    int nloci = gdata->num_loci;
+    int ndist = config->num_distributions;
+    int ncat = config->num_categories;
+    
     mstate->counter++;
     
-    // mstore%gstore = mstore%gstore + mstate%g
-    for(int i=0; i<gdata->nloci; i++) {
-        mstore->gstore[i] += mstate->g[i];
-        mstore->varistore[i] += mstate->g[i] * mstate->g[i];
+    /* Accumulate SNP effects */
+    for (int i = 0; i < nloci; i++) {
+        mstore->sum_snp_effects[i] += mstate->snp_effects[i];
+        mstore->varistore[i] += mstate->snp_effects[i] * mstate->snp_effects[i];
     }
     
-    // mstore%pstore... (ndist x ncat)
-    for(int j=0; j<config->ncat; j++) {
-        for(int i=0; i<config->ndist; i++) {
-            mstore->pstore[i][j] += mstate->p[i][j];
-            mstore->snpstore[i][j] += (double)mstate->snpindist[i][j];
-            mstore->varstore[i][j] += mstate->varindist[i][j];
+    /* Accumulate distribution statistics */
+    for (int j = 0; j < ncat; j++) {
+        for (int i = 0; i < ndist; i++) {
+            mstore->sum_mixture_proportions[i][j] += mstate->p[i][j];
+            mstore->sum_snps_per_distribution[i][j] += (double)mstate->snps_per_distribution[i][j];
+            mstore->sum_variance_per_distribution[i][j] += mstate->variance_per_distribution[i][j];
         }
     }
     
+    /* Accumulate hyperparameters: mu, nsnp, vara, vare */
     mstore->mu_vare_store[0] += mstate->mu;
-    mstore->mu_vare_store[1] += mstate->included; // implicit cast
-    mstore->mu_vare_store[2] += mstate->vara;
-    mstore->mu_vare_store[3] += mstate->vare;
+    mstore->mu_vare_store[1] += mstate->included;
+    mstore->mu_vare_store[2] += mstate->variance_genetic;
+    mstore->mu_vare_store[3] += mstate->variance_residual;
     
+    /* Online variance calculation (Welford's algorithm) */
     if (mstate->counter > 1) {
-        for(int i=0; i<gdata->nloci; i++) {
-             // mstore%varustore = mstore%varustore + (mstate%counter * mstate%g - mstore%gstore)**2 / ...
-             // Be careful with current gstore value (it already includes current g).
-             // Fortran: mstore%gstore = mstore%gstore + mstate%g (already done)
-             // Formula handles recursive variance update?
-             double term = ((double)mstate->counter * mstate->g[i] - mstore->gstore[i]);
-             mstore->varustore[i] += term * term / ((double)mstate->counter * ((double)mstate->counter - 1.0));
+        for (int i = 0; i < nloci; i++) {
+            double term = ((double)mstate->counter * mstate->snp_effects[i] - mstore->sum_snp_effects[i]);
+            mstore->varustore[i] += term * term / ((double)mstate->counter * ((double)mstate->counter - 1.0));
         }
     }
     
-    // Output to hyp file
-    fprintf(config->fp_hyp, "%10d %10d %15.7E %15.7E ", mstate->rep, mstate->included, mstate->vara, mstate->vare);
-    for(int j=0; j<config->ncat; j++) {
-        for(int i=0; i<config->ndist; i++) {
-            fprintf(config->fp_hyp, "%10d ", mstate->snpindist[i][j]);
+    /* Write to hyperparameter file */
+    fprintf(config->fp_hyp, "%10d %10d %15.7E %15.7E ", 
+            mstate->rep, mstate->included, mstate->variance_genetic, mstate->variance_residual);
+    
+    for (int j = 0; j < ncat; j++) {
+        for (int i = 0; i < ndist; i++) {
+            fprintf(config->fp_hyp, "%10d ", mstate->snps_per_distribution[i][j]);
         }
     }
-    for(int j=0; j<config->ncat; j++) {
-        for(int i=0; i<config->ndist; i++) {
-            fprintf(config->fp_hyp, "%15.7E ", mstate->varindist[i][j]);
+    for (int j = 0; j < ncat; j++) {
+        for (int i = 0; i < ndist; i++) {
+            fprintf(config->fp_hyp, "%15.7E ", mstate->variance_per_distribution[i][j]);
         }
     }
     fprintf(config->fp_hyp, "\n");
@@ -95,143 +120,196 @@ void mcmc_save_samples_common(ModelConfig *config, GenomicData *gdata, MCMCState
     if (config->beta) output_beta(config, mstate, gdata);
 }
 
+/**
+ * Initialize common MCMC data structures.
+ * Computes genotype sum of squares and annotation counts.
+ */
 void mcmc_init_common(ModelConfig *config, GenomicData *gdata, MCMCStorage *mstore) {
-    // Zeroing is done in allocate_data (calloc) usually, but good to ensure
-    // Only xpx logic needs copy
-    for(int i=0; i<gdata->nloci; i++) {
-        gdata->xpx[i] = dot_product_col(gdata->X, i, gdata->nt, gdata->nloci, &gdata->X[i]); // Wait, dot product of col i with col i
-        // Optimization: dot_product_col(X, i, nt, nloci, X_col_i)
-        // Manual loop:
+    int nloci = gdata->num_loci;
+    int nt = gdata->num_phenotyped_individuals;
+    int ncat = config->num_categories;
+    
+    /* Compute X'X for each SNP (genotype sum of squares) */
+    for (int i = 0; i < nloci; i++) {
         double sum = 0.0;
-        for(int r=0; r<gdata->nt; r++) {
-            double val = gdata->X[r * gdata->nloci + i];
+        for (int r = 0; r < nt; r++) {
+            double val = gdata->genotypes[i * nt + r];
             sum += val * val;
         }
-        gdata->xpx[i] = sum;
+        gdata->snp_correlations[i] = sum;
     }
     
-    for(int i=0; i<gdata->nloci; i++) {
-        int sum_C = 0;
-        for(int j=0; j<config->ncat; j++) sum_C += gdata->C[i][j];
-        gdata->nannot[i] = sum_C;
+    /* Count annotations per locus */
+    for (int i = 0; i < nloci; i++) {
+        int sum_c = 0;
+        for (int j = 0; j < ncat; j++) {
+            sum_c += gdata->categories[i][j];
+        }
+        gdata->annotations_per_locus[i] = sum_c;
     }
 }
 
+/**
+ * Set starting values for MCMC state.
+ */
 void mcmc_start_values_common(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, prng_state *rs) {
+    int nloci = gdata->num_loci;
+    int nind = gdata->num_individuals;
+    int nt = gdata->num_phenotyped_individuals;
+    int ndist = config->num_distributions;
+    int ncat = config->num_categories;
+    
     mstate->mu = 1.0;
-    for(int i=0; i<gdata->nt; i++) mstate->yadj[i] = 0.0;
+    for (int i = 0; i < nt; i++) {
+        mstate->adjusted_phenotypes[i] = 0.0;
+    }
     
-    // yhat = sum(why(trains==0))/nnind
-    // In C, why is size nind, but we usually access it via trains==0 filtering or compact arrays?
-    // In load_phenos, gdata->why is nind.
-    // In mcmc, we mostly use yadj which is size nt.
-    // Let's compute yhat from why where trains==0
-    
+    /* Compute mean phenotype for training individuals */
     double sum_y = 0.0;
     int cnt = 0;
-    for(int i=0; i<gdata->nind; i++) {
+    for (int i = 0; i < nind; i++) {
         if (gdata->trains[i] == 0) {
-            sum_y += gdata->why[i];
+            sum_y += gdata->phenotypes[i];
             cnt++;
         }
     }
     mstate->yhat = sum_y / mstate->nnind;
     
+    /* Compute phenotype variance */
     double sum_sq = 0.0;
-    for(int i=0; i<gdata->nind; i++) {
+    for (int i = 0; i < nind; i++) {
         if (gdata->trains[i] == 0) {
-            double diff = gdata->why[i] - mstate->yhat;
+            double diff = gdata->phenotypes[i] - mstate->yhat;
             sum_sq += diff * diff;
         }
     }
     mstate->vary = sum_sq / (mstate->nnind - 1.0);
     
-    for(int i=0; i<config->ndist; i++) mstate->gp[i] = mstate->gpin[i] * mstate->vara;
+    /* Initialize distribution variances */
+    for (int i = 0; i < ndist; i++) {
+        mstate->genomic_values[i] = mstate->variance_scaling_factors[i] * mstate->variance_genetic;
+    }
     
+    /* Initialize mixture proportions */
     mstate->scale = 0.0;
-    for(int j=0; j<config->ncat; j++) {
-        mstate->p[0][j] = 0.5; // p(1,j)
+    for (int j = 0; j < ncat; j++) {
+        mstate->p[0][j] = 0.5;
         double sum_rest = 0.0;
-        for(int i=1; i<config->ndist; i++) {
-            mstate->p[i][j] = 1.0 / mstate->gpin[i];
+        for (int i = 1; i < ndist; i++) {
+            mstate->p[i][j] = 1.0 / mstate->variance_scaling_factors[i];
             sum_rest += mstate->p[i][j];
         }
-        for(int i=1; i<config->ndist; i++) {
+        for (int i = 1; i < ndist; i++) {
             mstate->p[i][j] = 0.5 * mstate->p[i][j] / sum_rest;
         }
     }
     
-    // g init
-    double g_val = sqrt(mstate->vara / (0.5 * (double)gdata->nloci));
-    for(int i=0; i<gdata->nloci; i++) mstate->g[i] = g_val;
+    /* Initialize SNP effects */
+    double g_val = sqrt(mstate->variance_genetic / (0.5 * (double)nloci));
+    for (int i = 0; i < nloci; i++) {
+        mstate->snp_effects[i] = g_val;
+    }
     
-    for(int k=0; k<gdata->nloci; k++) gdata->permvec[k] = k;
+    /* Initialize permutation vector */
+    for (int k = 0; k < nloci; k++) {
+        gdata->permvec[k] = k;
+    }
     
     compute_residuals(gdata, mstate);
 }
 
+/**
+ * Pre-iteration setup: sample residual variance and update intercept.
+ */
 void mcmc_iteration_pre_common(ModelConfig *config, MCMCState *mstate, prng_state *rs) {
+    int nt = (int)mstate->nnind;
+    
     mstate->included = 0;
     
+    /* Sample residual variance (if not using VCE) */
     if (!config->VCE) {
-         // mstate%vare = dot_product(mstate%yadj, mstate%yadj) / rand_chi_square(mstate%nnind + 3.0d0)
-         double dp = 0.0;
-         for(int i=0; i<mstate->nnind; i++) dp += mstate->yadj[i] * mstate->yadj[i]; // nnind should match nt
-         mstate->vare = dp / rand_chi_square(rs, mstate->nnind + 3.0);
+        double dp = 0.0;
+        for (int i = 0; i < nt; i++) {
+            dp += mstate->adjusted_phenotypes[i] * mstate->adjusted_phenotypes[i];
+        }
+        mstate->variance_residual = dp / rng_chi_square(rs, mstate->nnind + 3.0);
     }
     
-    // Update Mu
+    /* Update intercept: add back old mu, sample new mu, subtract new mu */
     double sum_yadj = 0.0;
-    for(int i=0; i<mstate->nnind; i++) {
-        mstate->yadj[i] += mstate->mu;
-        sum_yadj += mstate->yadj[i];
+    for (int i = 0; i < nt; i++) {
+        mstate->adjusted_phenotypes[i] += mstate->mu;
+        sum_yadj += mstate->adjusted_phenotypes[i];
     }
     
-    mstate->mu = rand_normal(rs, sum_yadj / mstate->nnind, sqrt(mstate->vare / mstate->nnind));
+    mstate->mu = rng_normal(rs, sum_yadj / mstate->nnind, sqrt(mstate->variance_residual / mstate->nnind));
     
-    for(int i=0; i<mstate->nnind; i++) mstate->yadj[i] -= mstate->mu;
+    for (int i = 0; i < nt; i++) {
+        mstate->adjusted_phenotypes[i] -= mstate->mu;
+    }
     
-    for(int i=1; i<config->ndist; i++) { // 1-based loop in logic vs 0-based array?
-        // Fortran: do i = 2, config%ndist -> array index 2..ndist
-        // C: array index 1..ndist-1
-        mstate->log_gp[i] = log(mstate->gp[i]);
-        mstate->vare_gp[i] = mstate->vare / mstate->gp[i];
+    /* Precompute log distribution variances and vare/gp ratios */
+    for (int i = 1; i < config->num_distributions; i++) {
+        mstate->log_distribution_variances[i] = log(mstate->genomic_values[i]);
+        mstate->residual_variance_over_distribution_variances[i] = mstate->variance_residual / mstate->genomic_values[i];
     }
 }
 
+/**
+ * Update hyperparameters after processing all SNPs.
+ */
 void mcmc_update_hypers_common(int nc, ModelConfig *config, GenomicData *gdata, MCMCState *mstate, prng_state *rs) {
+    int nloci = gdata->num_loci;
+    int nt = (int)mstate->nnind;
+    int ndist = config->num_distributions;
+    int ncat = config->num_categories;
+    
     if (config->VCE) {
+        /* Compute sum of squared effects */
         double sum_g2 = 0.0;
-        for(int i=0; i<gdata->nloci; i++) sum_g2 += mstate->g[i] * mstate->g[i]; // Need to be careful: g is vector of size nloci? Yes.
+        for (int i = 0; i < nloci; i++) {
+            sum_g2 += mstate->snp_effects[i] * mstate->snp_effects[i];
+        }
         
+        /* Sample genetic variance */
         mstate->scale = ((double)mstate->included * sum_g2 + config->vara_ap * config->dfvara) / 
                         (config->dfvara + (double)mstate->included);
         
-        mstate->vara = rand_scaled_inverse_chi_square(rs, (double)mstate->included + config->dfvara, mstate->scale);
+        mstate->variance_genetic = rng_scaled_inverse_chi_square(rs, 
+            (double)mstate->included + config->dfvara, mstate->scale);
         
-        if (nc == 2) { // BayesCpi
-            mstate->gp[1] = mstate->vara / (mstate->included > 0 ? (double)mstate->included : 1.0); // Avoid div by zero if included=0? Fortran didn't check.
-            if (mstate->included == 0) mstate->gp[1] = 0.0; // Logic check needed
+        /* Update distribution variances */
+        if (nc == 2) {
+            /* BayesCpi: single non-null distribution */
+            double denom = (mstate->included > 0) ? (double)mstate->included : 1.0;
+            mstate->genomic_values[1] = mstate->variance_genetic / denom;
+            if (mstate->included == 0) mstate->genomic_values[1] = 0.0;
         } else {
-            for(int i=0; i<config->ndist; i++) mstate->gp[i] = mstate->gpin[i] * mstate->vara;
+            for (int i = 0; i < ndist; i++) {
+                mstate->genomic_values[i] = mstate->variance_scaling_factors[i] * mstate->variance_genetic;
+            }
         }
         
+        /* Sample residual variance */
         double dp = 0.0;
-        for(int i=0; i<mstate->nnind; i++) dp += mstate->yadj[i] * mstate->yadj[i];
+        for (int i = 0; i < nt; i++) {
+            dp += mstate->adjusted_phenotypes[i] * mstate->adjusted_phenotypes[i];
+        }
         
         double vare_num = dp + config->vare_ap * config->dfvare;
-        mstate->vare = vare_num / (mstate->nnind + config->dfvare);
-        mstate->vare = rand_scaled_inverse_chi_square(rs, mstate->nnind + config->dfvare, mstate->vare);
+        mstate->variance_residual = vare_num / (mstate->nnind + config->dfvare);
+        mstate->variance_residual = rng_scaled_inverse_chi_square(rs, 
+            mstate->nnind + config->dfvare, mstate->variance_residual);
     }
     
-    for(int j=0; j<config->ncat; j++) {
-        for(int i=0; i<config->ndist; i++) {
-            mstate->dirx[i] = (double)mstate->snpindist[i][j] + mstate->delta[i];
+    /* Sample mixture proportions from Dirichlet posterior */
+    for (int j = 0; j < ncat; j++) {
+        for (int i = 0; i < ndist; i++) {
+            mstate->dirichlet_scratch[i] = (double)mstate->snps_per_distribution[i][j] + mstate->dirichlet_priors[i];
         }
-        rdirichlet(rs, config->ndist, mstate->dirx, mstate->ytemp); // Using ytemp as temp buffer for p
-        // Wait, ytemp is size nloci. p is size ndist. Okay.
+        rng_dirichlet(rs, ndist, mstate->dirichlet_scratch, mstate->ytemp);
         
-        for(int i=0; i<config->ndist; i++) {
+        for (int i = 0; i < ndist; i++) {
             mstate->p[i][j] = mstate->ytemp[i];
             mstate->log_p[i][j] = log(mstate->p[i][j]);
         }

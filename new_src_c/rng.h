@@ -11,25 +11,33 @@ typedef struct {
 } prng_state;
 
 // Core RNG functions
-void manual_seed(prng_state *rs, uint64_t user_seed[4]);
-void rnumber_8(double *f, uint64_t v);
-uint64_t prng_next(prng_state* rs);
+void rng_seed(prng_state *rs, uint64_t user_seed[4]);
+void rng_get_double(double *f, uint64_t v);
+uint64_t rng_next_u64(prng_state* rs);
 
 // Distribution functions (mirrors mod_random.f90)
-double rand_uniform(prng_state *rs, double a, double b);
-double rand_normal(prng_state *rs, double mean, double stdev);
-double rand_exponential(prng_state *rs, double mean);
-double rand_gamma(prng_state *rs, double shape, double scale);
-double rand_chi_square(prng_state *rs, double dof);
-double rand_scaled_inverse_chi_square(prng_state *rs, double dof, double scale);
-double rand_inverse_gamma(prng_state *rs, double shape, double scale);
-double rand_weibull(prng_state *rs, double shape, double scale);
-double rand_cauchy(prng_state *rs, double median, double scale);
-double rand_student_t(prng_state *rs, double dof);
-double rand_laplace(prng_state *rs, double mean, double scale);
-double rand_log_normal(prng_state *rs, double mu, double sigma);
-double rand_beta(prng_state *rs, double a, double b);
-void rdirichlet(prng_state *rs, int n, double *irx, double *x);
-void rdirichlet2(prng_state *rs, int n, double *irx, double *x);
+double rng_uniform(prng_state *rs, double a, double b);
+double rng_normal(prng_state *rs, double mean, double stdev);
+double rng_exponential(prng_state *rs, double mean);
+double rng_gamma(prng_state *rs, double shape, double scale);
+double rng_chi_square(prng_state *rs, double dof);
+double rng_scaled_inverse_chi_square(prng_state *rs, double dof, double scale);
+double rng_inverse_gamma(prng_state *rs, double shape, double scale);
+double rng_weibull(prng_state *rs, double shape, double scale);
+double rng_cauchy(prng_state *rs, double median, double scale);
+double rng_student_t(prng_state *rs, double dof);
+double rng_laplace(prng_state *rs, double mean, double scale);
+double rng_log_normal(prng_state *rs, double mu, double sigma);
+double rng_beta(prng_state *rs, double a, double b);
+void rng_dirichlet(prng_state *rs, int n, double *irx, double *x);
+void rng_dirichlet2(prng_state *rs, int n, double *irx, double *x);
+
+/* Backward-compatible aliases for legacy code */
+#define rand_uniform rng_uniform
+#define rand_normal rng_normal
+#define rand_chi_square rng_chi_square
+#define rand_scaled_inverse_chi_square rng_scaled_inverse_chi_square
+#define rdirichlet rng_dirichlet
+#define rdirichlet2 rng_dirichlet2
 
 #endif // RNG_H

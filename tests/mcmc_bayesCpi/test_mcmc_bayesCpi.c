@@ -30,111 +30,113 @@ int main() {
     s_packed[1] = ((uint64_t)p[4] << 32) | (uint64_t)p[5];
     s_packed[2] = ((uint64_t)p[2] << 32) | (uint64_t)p[3];
     s_packed[3] = ((uint64_t)p[0] << 32) | (uint64_t)p[1];
-    manual_seed(&rs, s_packed);
+    rng_seed(&rs, s_packed);
 
     // Setup minimal config
-    config.ncat = 2;
-    config.ndist = 4;
+    config.num_categories = 2;
+    config.num_distributions = 4;
     config.VCE = true;
     config.dfvara = 4.0;
     config.dfvare = 4.0;
     config.vara_ap = 0.01;
     config.vare_ap = 0.01;
-    config.msize = 0;
+    config.marker_set_size = 0;
 
     // Setup minimal gdata
-    gdata.nloci = 10;
-    gdata.nind = 5;
-    gdata.nt = 5;
+    gdata.num_loci = 10;
+    gdata.num_individuals = 5;
+    gdata.num_phenotyped_individuals = 5;
 
     // Allocate arrays
-    gdata.X = (double*)calloc(gdata.nt * gdata.nloci, sizeof(double));
-    gdata.xpx = (double*)calloc(gdata.nloci, sizeof(double));
-    gdata.nannot = (int*)calloc(gdata.nloci, sizeof(int));
-    gdata.C = (int**)calloc(gdata.nloci, sizeof(int*));
-    for (i = 0; i < gdata.nloci; i++) gdata.C[i] = (int*)calloc(config.ncat, sizeof(int));
-    gdata.permvec = (int*)calloc(gdata.nloci, sizeof(int));
-    gdata.why = (double*)calloc(gdata.nind, sizeof(double));
-    gdata.trains = (int*)calloc(gdata.nind, sizeof(int));
-    gdata.snptracker = (int**)calloc(gdata.nloci, sizeof(int*));
-    for (i = 0; i < gdata.nloci; i++) gdata.snptracker[i] = (int*)calloc(config.ncat, sizeof(int));
-    gdata.vsnptrack = (int*)calloc(gdata.nloci, sizeof(int));
-    gdata.gannot = (double**)calloc(gdata.nloci, sizeof(double*));
-    for (i = 0; i < gdata.nloci; i++) gdata.gannot[i] = (double*)calloc(config.ncat, sizeof(double));
-    gdata.includedloci = (double*)calloc(gdata.nloci, sizeof(double));
+    gdata.genotypes = (double*)calloc(gdata.num_phenotyped_individuals * gdata.num_loci, sizeof(double));
+    gdata.snp_correlations = (double*)calloc(gdata.num_loci, sizeof(double));
+    gdata.annotations_per_locus = (int*)calloc(gdata.num_loci, sizeof(int));
+    gdata.categories = (int**)calloc(gdata.num_loci, sizeof(int*));
+    for (i = 0; i < gdata.num_loci; i++) gdata.categories[i] = (int*)calloc(config.num_categories, sizeof(int));
+    gdata.permvec = (int*)calloc(gdata.num_loci, sizeof(int));
+    gdata.phenotypes = (double*)calloc(gdata.num_individuals, sizeof(double));
+    gdata.trains = (int*)calloc(gdata.num_individuals, sizeof(int));
+    gdata.distribution_per_category = (int**)calloc(gdata.num_loci, sizeof(int*));
+    for (i = 0; i < gdata.num_loci; i++) gdata.distribution_per_category[i] = (int*)calloc(config.num_categories, sizeof(int));
+    gdata.current_distribution = (int*)calloc(gdata.num_loci, sizeof(int));
+    gdata.effects_per_category = (double**)calloc(gdata.num_loci, sizeof(double*));
+    for (i = 0; i < gdata.num_loci; i++) gdata.effects_per_category[i] = (double*)calloc(config.num_categories, sizeof(double));
+    gdata.included_loci = (double*)calloc(gdata.num_loci, sizeof(double));
 
-    mstate.g = (double*)calloc(gdata.nloci, sizeof(double));
-    mstate.yadj = (double*)calloc(gdata.nt, sizeof(double));
-    mstate.gp = (double*)calloc(config.ndist, sizeof(double));
-    mstate.gpin = (double*)calloc(config.ndist, sizeof(double));
-    mstate.p = (double**)calloc(config.ndist, sizeof(double*));
-    for (i = 0; i < config.ndist; i++) mstate.p[i] = (double*)calloc(config.ncat, sizeof(double));
-    mstate.log_p = (double**)calloc(config.ndist, sizeof(double*));
-    for (i = 0; i < config.ndist; i++) mstate.log_p[i] = (double*)calloc(config.ncat, sizeof(double));
-    mstate.log_gp = (double*)calloc(config.ndist, sizeof(double));
-    mstate.vare_gp = (double*)calloc(config.ndist, sizeof(double));
-    mstate.delta = (double*)calloc(config.ndist, sizeof(double));
-    mstate.dirx = (double*)calloc(config.ndist, sizeof(double));
-    mstate.snpindist = (int**)calloc(config.ndist, sizeof(int*));
-    for (i = 0; i < config.ndist; i++) mstate.snpindist[i] = (int*)calloc(config.ncat, sizeof(int));
-    mstate.varindist = (double**)calloc(config.ndist, sizeof(double*));
-    for (i = 0; i < config.ndist; i++) mstate.varindist[i] = (double*)calloc(config.ncat, sizeof(double));
-    mstate.s = (double*)calloc(config.ndist, sizeof(double));
-    mstate.stemp = (double*)calloc(config.ndist, sizeof(double));
+    mstate.snp_effects = (double*)calloc(gdata.num_loci, sizeof(double));
+    mstate.adjusted_phenotypes = (double*)calloc(gdata.num_phenotyped_individuals, sizeof(double));
+    mstate.genomic_values = (double*)calloc(config.num_distributions, sizeof(double));
+    mstate.variance_scaling_factors = (double*)calloc(config.num_distributions, sizeof(double));
+    mstate.p = (double**)calloc(config.num_distributions, sizeof(double*));
+    for (i = 0; i < config.num_distributions; i++) mstate.p[i] = (double*)calloc(config.num_categories, sizeof(double));
+    mstate.log_p = (double**)calloc(config.num_distributions, sizeof(double*));
+    for (i = 0; i < config.num_distributions; i++) mstate.log_p[i] = (double*)calloc(config.num_categories, sizeof(double));
+    mstate.log_distribution_variances = (double*)calloc(config.num_distributions, sizeof(double));
+    mstate.residual_variance_over_distribution_variances = (double*)calloc(config.num_distributions, sizeof(double));
+    mstate.dirichlet_priors = (double*)calloc(config.num_distributions, sizeof(double));
+    mstate.dirichlet_scratch = (double*)calloc(config.num_distributions, sizeof(double));
+    mstate.snps_per_distribution = (int**)calloc(config.num_distributions, sizeof(int*));
+    for (i = 0; i < config.num_distributions; i++) mstate.snps_per_distribution[i] = (int*)calloc(config.num_categories, sizeof(int));
+    mstate.variance_per_distribution = (double**)calloc(config.num_distributions, sizeof(double*));
+    for (i = 0; i < config.num_distributions; i++) mstate.variance_per_distribution[i] = (double*)calloc(config.num_categories, sizeof(double));
+    mstate.log_likelihoods = (double*)calloc(config.num_distributions, sizeof(double));
+    mstate.selection_probs = (double*)calloc(config.num_distributions, sizeof(double));
 
-    mstore.gstore = (double*)calloc(gdata.nloci, sizeof(double));
-    mstore.pstore = (double**)calloc(config.ndist, sizeof(double*));
-    for (i = 0; i < config.ndist; i++) mstore.pstore[i] = (double*)calloc(config.ncat, sizeof(double));
-    mstore.annotstore = (double**)calloc(gdata.nloci, sizeof(double*));
-    for (i = 0; i < gdata.nloci; i++) mstore.annotstore[i] = (double*)calloc(config.ncat, sizeof(double));
+    mstore.sum_snp_effects = (double*)calloc(gdata.num_loci, sizeof(double));
+    mstore.sum_mixture_proportions = (double**)calloc(config.num_distributions, sizeof(double*));
+    for (i = 0; i < config.num_distributions; i++) mstore.sum_mixture_proportions[i] = (double*)calloc(config.num_categories, sizeof(double));
+    mstore.sum_category_counts = (double**)calloc(gdata.num_loci, sizeof(double*));
+    for (i = 0; i < gdata.num_loci; i++) mstore.sum_category_counts[i] = (double*)calloc(config.num_categories, sizeof(double));
 
     // Initialize test values
-    for (i = 0; i < gdata.nind; i++) gdata.trains[i] = 0;
+    for (i = 0; i < gdata.num_individuals; i++) gdata.trains[i] = 0;
     double why_vals[] = {1.0, 2.0, 3.0, 4.0, 5.0};
-    for (i = 0; i < gdata.nind; i++) gdata.why[i] = why_vals[i];
+    for (i = 0; i < gdata.num_individuals; i++) gdata.phenotypes[i] = why_vals[i];
     mstate.nnind = 5.0;
-    mstate.vara = 1.0;
-    mstate.vare = 1.0;
+    mstate.variance_genetic = 1.0;
+    mstate.variance_residual = 1.0;
     mstate.mu = 0.0;
     double gpin_vals[] = {0.0, 0.0001, 0.001, 0.01};
-    for (i = 0; i < config.ndist; i++) mstate.gpin[i] = gpin_vals[i];
+    for (i = 0; i < config.num_distributions; i++) mstate.variance_scaling_factors[i] = gpin_vals[i];
     double delta_vals[] = {1.0, 1.0, 1.0, 1.0};
-    for (i = 0; i < config.ndist; i++) mstate.delta[i] = delta_vals[i];
+    for (i = 0; i < config.num_distributions; i++) mstate.dirichlet_priors[i] = delta_vals[i];
 
     // Fill X with simple test pattern (row-major in C)
-    for (i = 0; i < gdata.nt; i++) {
-        for (j = 0; j < gdata.nloci; j++) {
-            gdata.X[i * gdata.nloci + j] = (double)(i + 1 + j + 1) / 10.0;
+    for (i = 0; i < gdata.num_phenotyped_individuals; i++) {
+        for (j = 0; j < gdata.num_loci; j++) {
+            gdata.genotypes[i * gdata.num_loci + j] = (double)(i + 1 + j + 1) / 10.0;
         }
     }
 
     // Fill C with test pattern
-    for (j = 0; j < gdata.nloci; j++) {
-        for (i = 0; i < config.ncat; i++) gdata.C[j][i] = 0;
-        gdata.C[j][j % config.ncat] = 1;
+    for (j = 0; j < gdata.num_loci; j++) {
+        for (i = 0; i < config.num_categories; i++) gdata.categories[j][i] = 0;
+        gdata.categories[j][j % config.num_categories] = 1;
     }
 
     // Initialize permvec
-    for (j = 0; j < gdata.nloci; j++) gdata.permvec[j] = j;
+    for (j = 0; j < gdata.num_loci; j++) gdata.permvec[j] = j;
 
     // Compute nannot
-    for (j = 0; j < gdata.nloci; j++) {
-        gdata.nannot[j] = 0;
-        for (i = 0; i < config.ncat; i++) gdata.nannot[j] += gdata.C[j][i];
+    for (j = 0; j < gdata.num_loci; j++) {
+        gdata.annotations_per_locus[j] = 0;
+        for (i = 0; i < config.num_categories; i++) gdata.annotations_per_locus[j] += gdata.categories[j][i];
     }
 
     // Compute xpx
-    for (j = 0; j < gdata.nloci; j++) {
+    for (j = 0; j < gdata.num_loci; j++) {
+        gdata.snp_correlations[j] = dot_product_col(gdata.genotypes, j, gdata.num_phenotyped_individuals, gdata.num_loci, &gdata.genotypes[j]);
+        // Manual calculation
         double sum = 0.0;
-        for (i = 0; i < gdata.nt; i++) {
-            double val = gdata.X[i * gdata.nloci + j];
+        for (i = 0; i < gdata.num_phenotyped_individuals; i++) {
+            double val = gdata.genotypes[i * gdata.num_loci + j];
             sum += val * val;
         }
-        gdata.xpx[j] = sum;
+        gdata.snp_correlations[j] = sum;
     }
 
     // Initialize p
-    for (j = 0; j < config.ncat; j++) {
+    for (j = 0; j < config.num_categories; j++) {
         mstate.p[0][j] = 0.5;
         mstate.p[1][j] = 0.25;
         mstate.p[2][j] = 0.15;
@@ -142,44 +144,44 @@ int main() {
     }
 
     // Initialize log_p
-    for (j = 0; j < config.ncat; j++) {
-        for (i = 0; i < config.ndist; i++) {
+    for (j = 0; j < config.num_categories; j++) {
+        for (i = 0; i < config.num_distributions; i++) {
             mstate.log_p[i][j] = log(mstate.p[i][j]);
         }
     }
 
     // Initialize gp and vare_gp
-    for (i = 0; i < config.ndist; i++) mstate.gp[i] = mstate.gpin[i] * mstate.vara;
-    for (i = 1; i < config.ndist; i++) {
-        mstate.log_gp[i] = log(mstate.gp[i]);
-        mstate.vare_gp[i] = mstate.vare / mstate.gp[i];
+    for (i = 0; i < config.num_distributions; i++) mstate.genomic_values[i] = mstate.variance_scaling_factors[i] * mstate.variance_genetic;
+    for (i = 1; i < config.num_distributions; i++) {
+        mstate.log_distribution_variances[i] = log(mstate.genomic_values[i]);
+        mstate.residual_variance_over_distribution_variances[i] = mstate.variance_residual / mstate.genomic_values[i];
     }
 
     // Initialize g and gannot
-    for (j = 0; j < gdata.nloci; j++) mstate.g[j] = 0.1;
-    for (j = 0; j < gdata.nloci; j++) {
-        for (i = 0; i < config.ncat; i++) gdata.gannot[j][i] = 0.0;
+    for (j = 0; j < gdata.num_loci; j++) mstate.snp_effects[j] = 0.1;
+    for (j = 0; j < gdata.num_loci; j++) {
+        for (i = 0; i < config.num_categories; i++) gdata.effects_per_category[j][i] = 0.0;
     }
 
     // Initialize yadj
-    for (i = 0; i < gdata.nt; i++) {
-        mstate.yadj[i] = gdata.why[i] - 3.0;
+    for (i = 0; i < gdata.num_phenotyped_individuals; i++) {
+        mstate.adjusted_phenotypes[i] = gdata.phenotypes[i] - 3.0;
     }
 
     // Run init
     mcmc_bayesCpi_init(&config, &gdata, &mstate, &mstore);
 
     printf("gannot_after_init:\n");
-    for (j = 0; j < gdata.nloci; j++) {
-        for (i = 0; i < config.ncat; i++) {
-            printf("%20.16f\n", gdata.gannot[j][i]);
+    for (j = 0; j < gdata.num_loci; j++) {
+        for (i = 0; i < config.num_categories; i++) {
+            printf("%20.16f\n", gdata.effects_per_category[j][i]);
         }
     }
 
     printf("snptracker_after_init:\n");
-    for (j = 0; j < gdata.nloci; j++) {
-        for (i = 0; i < config.ncat; i++) {
-            printf("%4d\n", gdata.snptracker[j][i]);
+    for (j = 0; j < gdata.num_loci; j++) {
+        for (i = 0; i < config.num_categories; i++) {
+            printf("%4d\n", gdata.distribution_per_category[j][i]);
         }
     }
 
@@ -188,8 +190,8 @@ int main() {
     mcmc_bayesCpi_kernel(&config, &gdata, &mstate, &mstore, &rs);
 
     printf("g_after_kernel:\n");
-    for (j = 0; j < gdata.nloci; j++) {
-        printf("%20.16f\n", mstate.g[j]);
+    for (j = 0; j < gdata.num_loci; j++) {
+        printf("%20.16f\n", mstate.snp_effects[j]);
     }
 
     printf("included_after_kernel:\n");

@@ -1,45 +1,39 @@
+/**
+ * @file utils.c
+ * @brief General utility functions for data processing and computation.
+ */
+
 #include "utils.h"
 #include <stdlib.h>
 #include <math.h>
 
-// Helper for dot product
-double dot_product_row(double *X_row, double *vec, int n) {
-    double sum = 0.0;
-    for (int i = 0; i < n; i++) {
-        sum += X_row[i] * vec[i];
-    }
-    return sum;
-}
-
-// From mod_stats.f90
-
+/**
+ * Permute an array of indices using Fisher-Yates shuffle.
+ * 
+ * @param rs  Random number generator state
+ * @param n   Size of array
+ * @param p   Array to permute (will contain 0..n-1 in random order)
+ */
 void permutate(prng_state *rs, int n, int *p) {
     int i, j, k, ipj, itemp, m;
-    double u[100];
+    double u[PERMUTE_BATCH_SIZE];
     
+    /* Initialize to identity permutation */
     for (i = 0; i < n; i++) {
-        p[i] = i; // 0-based permutation vs 1-based in Fortran? 
-                  // Fortran: p(i) = i (1..n)
-                  // Let's use 0-based p[i] = i (0..n-1) if usage is for array indices. 
-                  // If usage is logical ID, we might need check. 
-                  // Usage in mod_mcmc: usually for shuffling order of loci.
-                  // Assume 0-based for C.
+        p[i] = i; 
     }
     
-    // generate up to 100 u(0,1) numbers at a time.
-    for (i = 0; i < n; i += 100) {
-        m = (n - i < 100) ? (n - i) : 100;
-        for (int x = 0; x < 100; x++) u[x] = rand_uniform(rs, 0.0, 1.0); 
-// Assuming rand_uniform takes state
+    /* Generate random numbers in batches for efficiency */
+    for (i = 0; i < n; i += PERMUTE_BATCH_SIZE) {
+        m = (n - i < PERMUTE_BATCH_SIZE) ? (n - i) : PERMUTE_BATCH_SIZE;
+        for (int x = 0; x < PERMUTE_BATCH_SIZE; x++) {
+            u[x] = rng_uniform(rs, 0.0, 1.0);
+        }
         
         for (j = 0; j < m; j++) {
-            ipj = i + j; // 0-based index
-            // k = int(u(j) * (n - ipj + 1)) + ipj (Fortran) -> u is 0..1
-            // Fortran: u(j) * (n - indices remaining) + current_index
-            // C: k = (int)(u[j] * (n - ipj)) + ipj; 
-            // Wait, range is [ipj, n-1]. Size is n - ipj.
+            ipj = i + j;
             k = (int)(u[j] * (n - ipj)) + ipj;
-            if (k >= n) k = n - 1; 
+            if (k >= n) k = n - 1;
 
             itemp = p[ipj];
             p[ipj] = p[k];
@@ -48,138 +42,161 @@ void permutate(prng_state *rs, int n, int *p) {
     }
 }
 
+/**
+ * Compute direct genomic values (predicted breeding values) for all individuals.
+ * 
+ * DGV = mu + sum(X * g) where g is the posterior mean of SNP effects.
+ * 
+ * @param gdata   Genomic data (genotypes)
+ * @param mstate  MCMC state (intercept)
+ * @param mstore  MCMC storage (posterior mean effects)
+ */
 void compute_dgv(GenomicData *gdata, MCMCState *mstate, MCMCStorage *mstore) {
-    int i, tr = 0;
+    int nind = gdata->num_individuals;
+    int nloci = gdata->num_loci;
+    int nt = gdata->num_phenotyped_individuals;
+    int tr = 0;
     
-    // Reset pred
-    for(i=0; i<gdata->nind; i++) gdata->pred[i] = MISSING_VALUE;
-
-    for (i = 0; i < gdata->nind; i++) {
-        if (gdata->trains[i] == 0) { // Using 0 for training set as per load_phenos
-             // Wait, compute_dgv in Fortran: if (gdata%trains(i) == 0) then ...
-             // BUT mod_stats says:
-             // 38:             if (gdata%trains(i) == 0) then
-             // 39:                 tr = tr + 1
-             // 40:                 gdata%pred(i) = mstate%mu + dot_product(gdata%X(tr, 1:gdata%nloci), mstore%gstore(1:gdata%nloci))
-             
-             // This implies X has rows only for training individuals?
-             // allocate_data: allocate(gdata%X(gdata%nt, gdata%nloci)
-             // Yes, X only stores training genotypes.
-             // So tr index matches X rows.
-             
-             // In C, 0-based tr.
-             
-             // Note: dot_product of row tr of X with gstore.
-             // X is (nt x nloci).
-             // Assume row-major X: X[tr * nloci + ...]
-             
-             double dp = dot_product_row(&gdata->X[tr * gdata->nloci], mstore->gstore, gdata->nloci);
-             gdata->pred[i] = mstate->mu + dp;
-             
-             tr++;
-        }
+    /* Initialize predictions to missing */
+    for (int i = 0; i < nind; i++) {
+        gdata->predicted_values[i] = MISSING_VALUE;
     }
-}
 
-void compute_residuals(GenomicData *gdata, MCMCState *mstate) {
-    int i, tr = 0;
-    
-    for (i = 0; i < gdata->nind; i++) {
+    /* Compute DGV for training individuals */
+    for (int i = 0; i < nind; i++) {
         if (gdata->trains[i] == 0) {
-            double dp = dot_product_row(&gdata->X[tr * gdata->nloci], mstate->g, gdata->nloci);
-            mstate->yadj[tr] = gdata->why[i] - dp - mstate->mu;
+            double dp = 0.0;
+            for (int j = 0; j < nloci; j++) {
+                /* Column-major access: X[j * nt + tr] */
+                dp += gdata->genotypes[j * nt + tr] * mstore->sum_snp_effects[j];
+            }
+            gdata->predicted_values[i] = mstate->mu + dp;
             tr++;
         }
     }
 }
 
-// From mod_standardize.f90
+/**
+ * Compute residuals (adjusted phenotypes) for MCMC initialization.
+ * 
+ * residual = y - X*g - mu
+ * 
+ * @param gdata   Genomic data
+ * @param mstate  MCMC state
+ */
+void compute_residuals(GenomicData *gdata, MCMCState *mstate) {
+    int nind = gdata->num_individuals;
+    int nloci = gdata->num_loci;
+    int nt = gdata->num_phenotyped_individuals;
+    int tr = 0;
+    
+    for (int i = 0; i < nind; i++) {
+        if (gdata->trains[i] == 0) {
+            double dp = 0.0;
+            for (int j = 0; j < nloci; j++) {
+                /* Column-major access */
+                dp += gdata->genotypes[j * nt + tr] * mstate->snp_effects[j];
+            }
+            mstate->adjusted_phenotypes[tr] = gdata->phenotypes[i] - dp - mstate->mu;
+            tr++;
+        }
+    }
+}
 
+/**
+ * Center and standardize genotypes.
+ * 
+ * Transforms genotypes to have mean 0 and variance proportional to 2pq.
+ * Missing values (>2) are imputed with the mean genotype.
+ * 
+ * @param config  Model configuration
+ * @param gdata   Genomic data (modified in place)
+ */
 void xcenter(ModelConfig *config, GenomicData *gdata) {
-    int j, cnt;
+    int nloci = gdata->num_loci;
+    int nt = gdata->num_phenotyped_individuals;
     double q, qtest;
     FILE *fp;
     
-    // For temp storage of column data if needed, or iterate
-    // X is row-major (nt x nloci) -> accessing column j is strided.
-    // X[i * nloci + j]
-    
     if (config->mcmc) {
-        for (j = 0; j < gdata->nloci; j++) {
-            // First pass: Calculate q
+        /* Compute allele frequencies and standardize */
+        for (int j = 0; j < nloci; j++) {
             double sum = 0.0;
-            cnt = 0;
-            for (int tr = 0; tr < gdata->nt; tr++) {
-                double val = gdata->X[tr * gdata->nloci + j];
+            int cnt = 0;
+            
+            /* First pass: compute mean (allele frequency) */
+            for (int tr = 0; tr < nt; tr++) {
+                double val = gdata->genotypes[j * nt + tr];
                 if (val < GENOTYPE_MISSING_THRESHOLD) {
                     sum += val;
                     cnt++;
                 }
             }
             
-            if (cnt > 0)
-                q = sum / (2.0 * cnt);
-            else 
-                q = 0.0; // Should not handle?
+            q = (cnt > 0) ? sum / (2.0 * cnt) : 0.0;
 
             if (q == 1.0 || q == 0.0) {
-                 for (int tr = 0; tr < gdata->nt; tr++) {
-                     gdata->X[tr * gdata->nloci + j] = 0.0;
-                 }
+                /* Fixed allele - set to zero */
+                for (int tr = 0; tr < nt; tr++) {
+                    gdata->genotypes[j * nt + tr] = 0.0;
+                }
             } else {
-                 double denom = sqrt(2.0 * q * (1.0 - q));
-                 for (int tr = 0; tr < gdata->nt; tr++) {
-                     double val = gdata->X[tr * gdata->nloci + j];
-                     if (val > 2.0) val = 2.0 * q; // Handle missing replacement
-                     gdata->X[tr * gdata->nloci + j] = (val - 2.0 * q) / denom;
-                 }
+                /* Standardize: (x - 2q) / sqrt(2pq) */
+                double denom = sqrt(2.0 * q * (1.0 - q));
+                for (int tr = 0; tr < nt; tr++) {
+                    double val = gdata->genotypes[j * nt + tr];
+                    if (val > 2.0) val = 2.0 * q;  /* Impute missing */
+                    gdata->genotypes[j * nt + tr] = (val - 2.0 * q) / denom;
+                }
             }
-            gdata->freqstore[j] = q;
+            gdata->allele_frequencies[j] = q;
         }
         
-        fp = fopen(config->freqfil, "w");
+        /* Write frequencies to file */
+        fp = fopen(config->freq_file_path, "w");
         if (fp) {
-            for (j = 0; j < gdata->nloci; j++) {
-                fprintf(fp, "%10.6f\n", gdata->freqstore[j]);
+            for (int j = 0; j < nloci; j++) {
+                fprintf(fp, "%10.6f\n", gdata->allele_frequencies[j]);
             }
             fclose(fp);
         }
         
     } else {
-        fp = fopen(config->freqfil, "r");
+        /* Prediction mode: read frequencies from file */
+        fp = fopen(config->freq_file_path, "r");
         if (fp) {
-            for (j = 0; j < gdata->nloci; j++) {
-                // read E15.7
-                if (fscanf(fp, "%lf", &gdata->freqstore[j]) != 1) break;
+            for (int j = 0; j < nloci; j++) {
+                if (fscanf(fp, "%lf", &gdata->allele_frequencies[j]) != 1) break;
             }
             fclose(fp);
         }
         
-        for (j = 0; j < gdata->nloci; j++) {
-            q = gdata->freqstore[j];
+        /* Standardize using stored frequencies */
+        for (int j = 0; j < nloci; j++) {
+            q = gdata->allele_frequencies[j];
             if (q == 1.0 || q == 0.0) {
-                 for (int tr = 0; tr < gdata->nt; tr++) {
-                     gdata->X[tr * gdata->nloci + j] = 0.0;
-                 }
+                for (int tr = 0; tr < nt; tr++) {
+                    gdata->genotypes[j * nt + tr] = 0.0;
+                }
             } else {
-                 // Recalculate qtest for missing replacement logic?
-                 double sum = 0.0;
-                 cnt = 0;
-                 for (int tr = 0; tr < gdata->nt; tr++) {
-                     double val = gdata->X[tr * gdata->nloci + j];
-                     if (val < GENOTYPE_MISSING_THRESHOLD) {
-                         sum += val;
-                         cnt++;
-                     }
-                 }
-                 if (cnt > 0) qtest = sum / (2.0 * cnt); else qtest = 0.0;
-                 
-                 double denom = sqrt(2.0 * q * (1.0 - q));
-                 for (int tr = 0; tr < gdata->nt; tr++) {
-                     double val = gdata->X[tr * gdata->nloci + j];
-                     if (val > 2.0) val = 2.0 * qtest; 
-                     gdata->X[tr * gdata->nloci + j] = (val - 2.0 * q) / denom;
-                 }
+                /* Compute current mean for missing imputation */
+                double sum = 0.0;
+                int cnt = 0;
+                for (int tr = 0; tr < nt; tr++) {
+                    double val = gdata->genotypes[j * nt + tr];
+                    if (val < GENOTYPE_MISSING_THRESHOLD) {
+                        sum += val;
+                        cnt++;
+                    }
+                }
+                qtest = (cnt > 0) ? sum / (2.0 * cnt) : 0.0;
+                
+                double denom = sqrt(2.0 * q * (1.0 - q));
+                for (int tr = 0; tr < nt; tr++) {
+                    double val = gdata->genotypes[j * nt + tr];
+                    if (val > 2.0) val = 2.0 * qtest;
+                    gdata->genotypes[j * nt + tr] = (val - 2.0 * q) / denom;
+                }
             }
         }
     }

@@ -1,217 +1,241 @@
+/**
+ * @file mcmc_mixture.c
+ * @brief Mixture model MCMC kernel implementation.
+ * 
+ * Implements the BayesRC mixture model where SNPs can belong to multiple
+ * annotation categories, and the category assignment is sampled during MCMC.
+ */
+
 #include "mcmc_mixture.h"
 #include "mcmc_utils.h"
+#include "mcmc_sampling.h"
 #include <math.h>
 #include <stdbool.h>
 
+/**
+ * Initialize mixture model-specific data structures.
+ */
 void mcmc_mixture_init(ModelConfig *config, GenomicData *gdata, MCMCState *mstate) {
-    // gdata->vsnptrack = 2
-    for(int k=0; k<gdata->nloci; k++) gdata->vsnptrack[k] = 2; // ? Fortran: gdata%vsnptrack = 2
+    int nloci = gdata->num_loci;
+    int ncat = config->num_categories;
     
-    for(int k=0; k<gdata->nloci; k++) {
-        if (gdata->nannot[k] == 1) {
-            for(int j=0; j<config->ncat; j++) {
-                if (gdata->C[k][j] == 1) gdata->a[k] = j; // 0-based
+    /* Initialize distribution tracking to 2 (first non-null) */
+    for (int k = 0; k < nloci; k++) {
+        gdata->current_distribution[k] = 2;
+    }
+    
+    /* For SNPs with single annotation, set current category */
+    for (int k = 0; k < nloci; k++) {
+        if (gdata->annotations_per_locus[k] == 1) {
+            for (int j = 0; j < ncat; j++) {
+                if (gdata->categories[k][j] == 1) {
+                    gdata->current_category[k] = j;
+                }
             }
         }
     }
 }
 
+/**
+ * Run one iteration of the mixture model MCMC kernel.
+ * 
+ * Two-stage sampling:
+ * 1. Sample annotation category for multi-annotated SNPs
+ * 2. Sample distribution and effect for each SNP
+ */
 void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MCMCStorage *mstore, prng_state *rs) {
-    int i, j, k, kk, snploc, l;
-    double skk, sk, clike, ssculm, r;
-    bool overflow;
-
-    // gdata%snptracker = 0
-    for(k=0; k<gdata->nloci; k++) {
-        for(j=0; j<config->ncat; j++) gdata->snptracker[k][j] = 0;
+    int nloci = gdata->num_loci;
+    int ncat = config->num_categories;
+    int ndist = config->num_distributions;
+    int nt = gdata->num_phenotyped_individuals;
+    
+    /* Reset distribution per category tracking */
+    for (int k = 0; k < nloci; k++) {
+        for (int j = 0; j < ncat; j++) {
+            gdata->distribution_per_category[k][j] = 0;
+        }
     }
 
-    // Choose annotation
-    for (k = 0; k < gdata->nloci; k++) {
-        snploc = gdata->permvec[k];
-        if (gdata->nannot[snploc] > 1) {
-             mstate->gk = mstate->g[snploc];
-             // z => gdata%X(:, snploc)
-             mstate->zz = gdata->xpx[snploc];
-             mstate->zz_vare = mstate->zz / mstate->vare;
-             
-             // gdata%atemp = 0
-             for(j=0; j<config->ncat; j++) gdata->atemp[j] = 0;
-             
-             if (mstate->rep != 1) {
-                 gdata->atemp[gdata->a[snploc]] = 1;
-             }
-             
-             // mstate%dira = dble(gdata%C...) + dble(gdata%atemp)
-             for(j=0; j<config->ncat; j++) mstate->dira[j] = (double)gdata->C[snploc][j] + (double)gdata->atemp[j];
-             
-             // pia = rdirichlet2
-             rdirichlet2(rs, config->ncat, mstate->dira, mstate->pia);
-             
-             if (gdata->vsnptrack[snploc] > 1) {
-                 // ytemp = yadj + z * gk
-                 for(int row=0; row<gdata->nt; row++) mstate->ytemp[row] = mstate->yadj[row] + gdata->X[row * gdata->nloci + snploc] * mstate->gk;
-             } else {
-                 for(int row=0; row<gdata->nt; row++) mstate->ytemp[row] = mstate->yadj[row];
-             }
-             
-             mstate->rhs = dot_product_col(gdata->X, snploc, gdata->nt, gdata->nloci, mstate->ytemp);
-             // mstate->lhs not used?
-             
-             mstate->maxs = 0.0;
-             for (i = 1; i < config->ndist; i++) {
-                 mstate->uhat = mstate->rhs / (mstate->zz + mstate->vare_gp[i]);
-                 mstate->maxtemp = 0.5 * mstate->uhat * mstate->rhs / mstate->vare;
-                 if (mstate->maxtemp > mstate->maxs) mstate->maxs = mstate->maxtemp;
-             }
-             
-             for (j = 0; j < config->ncat; j++) {
-                 if (gdata->C[snploc][j] == 1) {
-                     mstate->ss[j] = mstate->p[0][j] * exp(-mstate->maxs); // p(1,j)
-                     for(kk=1; kk<config->ndist; kk++) { // p(kk+1, j)
-                         mstate->detV = mstate->gp[kk] * mstate->zz_vare + 1.0;
-                         mstate->uhat = mstate->rhs / (mstate->zz + mstate->vare_gp[kk]);
-                         mstate->ss[j] += mstate->p[kk][j] * pow(mstate->detV, -0.5) * exp(0.5 * mstate->uhat * mstate->rhs / mstate->vare - mstate->maxs);
-                     }
-                     mstate->ss[j] = log(mstate->pia[j]) + log(mstate->ss[j]);
-                 }
-             }
-             
-             // Stabilize
-             for(kk=0; kk<config->ncat; kk++) {
-                 if (gdata->C[snploc][kk] == 1) {
-                     skk = mstate->ss[kk];
-                     sk = 0.0;
-                     overflow = false;
-                     for (l=0; l<config->ncat; l++) {
-                         if (gdata->C[snploc][l] == 1) {
-                             if (l==kk) continue;
-                             clike = mstate->ss[l] - skk;
-                             if (clike > LOG_UPPER_LIMIT) { overflow = true; break; }
-                             if (clike < -LOG_UPPER_LIMIT) continue;
-                             sk += exp(clike);
-                         }
-                     }
-                     if (overflow) mstate->sstemp[kk] = 0.0;
-                     else mstate->sstemp[kk] = 1.0 / (1.0 + sk);
-                 } else {
-                     mstate->sstemp[kk] = 0.0;
-                 }
-             }
-             
-             // Sample annotation
-             ssculm = 0.0;
-             r = rand_uniform(rs, 0.0, 1.0);
-             config->annotflag = 0;
-             for (kk=0; kk<config->ncat; kk++) {
-                 if (gdata->C[snploc][kk] == 1) {
-                     ssculm += mstate->sstemp[kk];
-                     if (r < ssculm) {
-                         config->annotflag = kk;
-                         break;
-                     }
-                 }
-             }
-             gdata->a[snploc] = config->annotflag;
+    /* =====================================================================
+     * Stage 1: Sample annotation category for multi-annotated SNPs
+     * ===================================================================== */
+    for (int k = 0; k < nloci; k++) {
+        int snploc = gdata->permvec[k];
+        
+        if (gdata->annotations_per_locus[snploc] > 1) {
+            double ssq = gdata->snp_correlations[snploc];
+            double current_effect = mstate->snp_effects[snploc];
+            int current_dist = gdata->current_distribution[snploc];
+            
+            /* Prepare Dirichlet posterior for annotation sampling */
+            for (int j = 0; j < ncat; j++) {
+                mstate->category_dirichlet_scratch[j] = (double)gdata->categories[snploc][j];
+            }
+            if (mstate->rep != 1) {
+                /* Add count for current category */
+                mstate->category_dirichlet_scratch[gdata->current_category[snploc]] += 1.0;
+            }
+            
+            /* Sample annotation probabilities from Dirichlet */
+            rng_dirichlet2(rs, ncat, mstate->category_dirichlet_scratch, mstate->category_probabilities);
+            
+            /* Compute adjusted phenotype with current effect added back */
+            double *ytemp = mstate->ytemp;
+            if (current_dist > 1) {
+                for (int row = 0; row < nt; row++) {
+                    ytemp[row] = mstate->adjusted_phenotypes[row] + 
+                                 gdata->genotypes[snploc * nt + row] * current_effect;
+                }
+            } else {
+                for (int row = 0; row < nt; row++) {
+                    ytemp[row] = mstate->adjusted_phenotypes[row];
+                }
+            }
+            
+            /* Compute RHS */
+            double rhs = 0.0;
+            for (int row = 0; row < nt; row++) {
+                rhs += gdata->genotypes[snploc * nt + row] * ytemp[row];
+            }
+            
+            /* Find maximum log probability for stability */
+            double ssq_over_vare = ssq / mstate->variance_residual;
+            double maxs = 0.0;
+            for (int i = 1; i < ndist; i++) {
+                double uhat = rhs / (ssq + mstate->residual_variance_over_distribution_variances[i]);
+                double temp = 0.5 * uhat * rhs / mstate->variance_residual;
+                if (temp > maxs) maxs = temp;
+            }
+            
+            /* Compute annotation selection scores */
+            for (int j = 0; j < ncat; j++) {
+                if (gdata->categories[snploc][j] == 1) {
+                    double ss_val = mstate->p[0][j] * exp(-maxs);
+                    for (int kk = 1; kk < ndist; kk++) {
+                        double detV = mstate->genomic_values[kk] * ssq_over_vare + 1.0;
+                        double uhat = rhs / (ssq + mstate->residual_variance_over_distribution_variances[kk]);
+                        ss_val += mstate->p[kk][j] * pow(detV, -0.5) * 
+                                  exp(0.5 * uhat * rhs / mstate->variance_residual - maxs);
+                    }
+                    mstate->ss[j] = log(mstate->category_probabilities[j]) + log(ss_val);
+                }
+            }
+            
+            /* Stabilize and normalize */
+            for (int kk = 0; kk < ncat; kk++) {
+                if (gdata->categories[snploc][kk] == 1) {
+                    double skk = mstate->ss[kk];
+                    double sk = 0.0;
+                    bool overflow = false;
+                    for (int l = 0; l < ncat; l++) {
+                        if (gdata->categories[snploc][l] == 1 && l != kk) {
+                            double clike = mstate->ss[l] - skk;
+                            if (clike > LOG_UPPER_LIMIT) { overflow = true; break; }
+                            if (clike < -LOG_UPPER_LIMIT) continue;
+                            sk += exp(clike);
+                        }
+                    }
+                    mstate->sstemp[kk] = overflow ? 0.0 : 1.0 / (1.0 + sk);
+                } else {
+                    mstate->sstemp[kk] = 0.0;
+                }
+            }
+            
+            /* Sample annotation */
+            double r = rng_uniform(rs, 0.0, 1.0);
+            double cumsum = 0.0;
+            int selected_cat = 0;
+            for (int kk = 0; kk < ncat; kk++) {
+                if (gdata->categories[snploc][kk] == 1) {
+                    cumsum += mstate->sstemp[kk];
+                    if (r < cumsum) {
+                        selected_cat = kk;
+                        break;
+                    }
+                }
+            }
+            gdata->current_category[snploc] = selected_cat;
         }
     }
     
-    // Sample effect
-    for (k = 0; k < gdata->nloci; k++) {
-        snploc = gdata->permvec[k];
-        j = gdata->a[snploc]; // annotation index
+    /* =====================================================================
+     * Stage 2: Sample distribution and effect for each SNP
+     * ===================================================================== */
+    for (int k = 0; k < nloci; k++) {
+        int snploc = gdata->permvec[k];
+        int j = gdata->current_category[snploc];
         
-        mstate->gk = mstate->g[snploc];
-        mstate->zz = gdata->xpx[snploc];
-        mstate->zz_vare = mstate->zz / mstate->vare;
+        double ssq = gdata->snp_correlations[snploc];
+        double current_effect = mstate->snp_effects[snploc];
+        int current_dist = gdata->current_distribution[snploc];
         
-        if (gdata->vsnptrack[snploc] > 1) {
-             add_col_scalar(mstate->yadj, gdata->X, snploc, gdata->nt, gdata->nloci, mstate->gk);
+        /* Add back current effect to adjusted phenotype */
+        if (current_dist > 1) {
+            add_snp_contribution(mstate->adjusted_phenotypes, gdata->genotypes,
+                                snploc, current_effect, nt, nloci);
         }
         
-        mstate->rhs = dot_product_col(gdata->X, snploc, gdata->nt, gdata->nloci, mstate->yadj);
+        /* Compute RHS */
+        double rhs = compute_rhs(gdata->genotypes, snploc, 
+                                mstate->adjusted_phenotypes, nt, nloci);
         
-        mstate->s[0] = mstate->log_p[0][j];
-        for(kk=1; kk<config->ndist; kk++) {
-            mstate->logdetV = log(mstate->gp[kk] * mstate->zz_vare + 1.0);
-            mstate->uhat = mstate->rhs / (mstate->zz + mstate->vare_gp[kk]);
-            mstate->s[kk] = -0.5 * (mstate->logdetV - (mstate->rhs * mstate->uhat / mstate->vare)) + mstate->log_p[kk][j];
+        /* Compute log selection probabilities */
+        double *log_probs = mstate->log_likelihoods;
+        log_probs[0] = mstate->log_p[0][j];
+        for (int kk = 1; kk < ndist; kk++) {
+            double ssq_over_vare = ssq / mstate->variance_residual;
+            double logdetV = log(mstate->genomic_values[kk] * ssq_over_vare + 1.0);
+            double uhat = rhs / (ssq + mstate->residual_variance_over_distribution_variances[kk]);
+            log_probs[kk] = -0.5 * (logdetV - (rhs * uhat / mstate->variance_residual)) + mstate->log_p[kk][j];
         }
         
-        // Stabilize
-        for(kk=0; kk<config->ndist; kk++) {
-            skk = mstate->s[kk];
-            sk = 0.0;
-            overflow = false;
-            for(l=0; l<config->ndist; l++) {
-                if (l==kk) continue;
-                clike = mstate->s[l] - skk;
-                if (clike > LOG_UPPER_LIMIT) { overflow=true; break; }
-                if (clike < -LOG_UPPER_LIMIT) continue;
-                sk += exp(clike);
-            }
-            if (overflow) mstate->stemp[kk] = 0.0;
-            else mstate->stemp[kk] = 1.0 / (1.0 + sk);
-        }
+        /* Stabilize and normalize */
+        stabilize_log_probs(mstate->selection_probs, log_probs, ndist);
         
-        // Sample dist
-        ssculm = 0.0;
-        r = rand_uniform(rs, 0.0, 1.0);
-        config->indistflag = 0;
-        for(kk=0; kk<config->ndist; kk++) {
-            ssculm += mstate->stemp[kk];
-            if (r < ssculm) {
-                config->indistflag = kk;
-                break;
-            }
-        }
+        /* Sample distribution */
+        int dist_idx = sample_distribution_index(mstate->selection_probs, ndist, rs);
         
-        gdata->snptracker[snploc][j] = config->indistflag + 1; // Store 1-based?
-        gdata->vsnptrack[snploc] = config->indistflag + 1; // 1-based? Fortran: vsnptrack = indistflag (where indistflag is 1-based)
+        /* Store assignments (1-based for compatibility) */
+        gdata->distribution_per_category[snploc][j] = dist_idx + 1;
+        gdata->current_distribution[snploc] = dist_idx + 1;
         
-        if (config->indistflag == 0) { // Dist 1 in Fortran
-            mstate->gk = 0.0;
+        /* Sample effect */
+        double new_effect;
+        if (dist_idx == 0) {
+            new_effect = 0.0;
         } else {
-            mstate->v1 = mstate->zz + mstate->vare / mstate->gp[config->indistflag];
-            mstate->gk = rand_normal(rs, mstate->rhs / mstate->v1, sqrt(mstate->vare / mstate->v1));
-            add_col_scalar(mstate->yadj, gdata->X, snploc, gdata->nt, gdata->nloci, -mstate->gk);
+            new_effect = sample_snp_effect(dist_idx, rhs, ssq,
+                                          mstate->variance_residual,
+                                          mstate->genomic_values, rs);
+            subtract_snp_contribution(mstate->adjusted_phenotypes, gdata->genotypes,
+                                     snploc, new_effect, nt, nloci);
             mstate->included++;
         }
-        mstate->g[snploc] = mstate->gk;
-        // msize omitted
+        mstate->snp_effects[snploc] = new_effect;
     }
     
-    // Stats update mixture
-    for(j=0; j<config->ncat; j++) {
-        for(i=0; i<config->ndist; i++) {
-             int cnt = 0;
-             double sum_g2 = 0.0;
-             for(k=0; k<gdata->nloci; k++) {
-                 if (gdata->snptracker[k][j] == i+1) {
-                     cnt++;
-                     // sum(g2) but mask gdata%gannot? 
-                     // In mixture: sum(mstate%g * mstate%g, mask=...)
-                     // mstate->g is updated.
-                     // IMPORTANT: in mixture, g is updated per snp.
-                     // In Fortran additive kernel: g is sum(gannot).
-                     // In mixture kernel: mstate%g(snploc) = mstate%gk. 
-                     // So usage is correct.
-                     sum_g2 += mstate->g[k] * mstate->g[k];
-                 }
-             }
-             mstate->snpindist[i][j] = cnt;
-             mstate->varindist[i][j] = sum_g2;
+    /* =====================================================================
+     * Compute per-distribution statistics
+     * ===================================================================== */
+    for (int j = 0; j < ncat; j++) {
+        for (int i = 0; i < ndist; i++) {
+            int cnt = 0;
+            double sum_g2 = 0.0;
+            for (int k = 0; k < nloci; k++) {
+                if (gdata->distribution_per_category[k][j] == i + 1) {
+                    cnt++;
+                    sum_g2 += mstate->snp_effects[k] * mstate->snp_effects[k];
+                }
+            }
+            mstate->snps_per_distribution[i][j] = cnt;
+            mstate->variance_per_distribution[i][j] = sum_g2;
         }
     }
     
-    // Included
-    double included_sum = 0.0;
-     for(i=0; i<config->ndist; i++) included_sum += mstate->snpindist[i][0]; // Wait, Fortran included = nloci - sum(snpindist(1,:)). 
-     // snpindist(1,:) is "zero effect" count (dist 1).
-     // Total loci = sum all dists. 
-     // So included = nloci - count_of_dist_1.
-     // In C: dist 0 is index 0.
-     int count_zero = 0;
-     for(j=0; j<config->ncat; j++) count_zero += mstate->snpindist[0][j];
-     mstate->included = gdata->nloci - count_zero;
+    /* Count included SNPs (distribution > 1) */
+    int count_zero = 0;
+    for (int j = 0; j < ncat; j++) {
+        count_zero += mstate->snps_per_distribution[0][j];
+    }
+    mstate->included = nloci - count_zero;
 }
