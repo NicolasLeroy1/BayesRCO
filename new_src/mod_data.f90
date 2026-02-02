@@ -35,6 +35,7 @@ module mod_data
         real(dp) :: zz, rhs, lhs, v1, gk, zz_vare
         real(dp) :: logdetV, uhat, total_ssq, detV, maxs, maxtemp
         real(dp) :: xhat, sk, skk, r, ssculm, clike
+        real(dp), dimension(:), pointer :: z
     end type MCMCState
 
     type :: MCMCStorage
@@ -50,6 +51,6 @@ module mod_data
     type(MCMCStorage) :: mstore
 
     integer :: ios, clock
-    real(dp), pointer :: z(:)
+
 
 end module mod_data

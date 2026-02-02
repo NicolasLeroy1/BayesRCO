@@ -34,6 +34,7 @@ contains
         real(dp) :: c, temp
         if (mean <= 0.0d0) then
             write(*, *) "mean must be positive"
+            c = 0.0d0
         else
             call random_number(temp)
             c = -mean * log(temp)
@@ -177,7 +178,7 @@ contains
         real(dp) :: x(n), sx
         integer :: i
         do i = 1, n
-            if (irx(i) /= 0) then
+            if (irx(i) /= 0.0d0) then
                 x(i) = rand_gamma(irx(i), 1.0d0)
             else
                 x(i) = 0.0d0

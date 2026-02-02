@@ -1,6 +1,6 @@
 module mod_stats
     use mod_defs, only: dp, MISSING_VALUE
-    use mod_data
+    use mod_data, only: GenomicData, MCMCState, MCMCStorage
     implicit none
 
 contains
@@ -27,7 +27,10 @@ contains
         end do
     end subroutine permutate
 
-    subroutine compute_dgv()
+    subroutine compute_dgv(gdata, mstate, mstore)
+        type(GenomicData), intent(inout) :: gdata
+        type(MCMCState), intent(in) :: mstate
+        type(MCMCStorage), intent(in) :: mstore
         integer :: i, tr
         tr = 0
         gdata%pred = MISSING_VALUE
@@ -39,7 +42,9 @@ contains
         end do
     end subroutine compute_dgv
 
-    subroutine compute_residuals()
+    subroutine compute_residuals(gdata, mstate)
+        type(GenomicData), intent(in) :: gdata
+        type(MCMCState), intent(inout) :: mstate
         integer :: tr, i
         tr = 0
         do i = 1, gdata%nind

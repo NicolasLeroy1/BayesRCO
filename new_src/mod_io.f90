@@ -1,12 +1,14 @@
 module mod_io
     use mod_defs, only: dp, MISSING_VALUE
-    use mod_data
+    use mod_data, only: ModelConfig, GenomicData, MCMCState, MCMCStorage
     implicit none
 
 contains
 
-    subroutine get_size()
-        integer :: unit_phen, unit_bim
+    subroutine get_size(config, gdata)
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(inout) :: gdata
+        integer :: unit_phen, unit_bim, ios
         gdata%nind = 0
         open(newunit=unit_phen, file=trim(config%phenfil), status='old', form='formatted')
         do
@@ -26,7 +28,9 @@ contains
         close(unit_bim)
     end subroutine get_size
 
-    subroutine load_phenos_plink()
+    subroutine load_phenos_plink(config, gdata)
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(inout) :: gdata
         character(len=1024) :: str
         character(len=20) :: why_str
         integer :: pos1, pos2, n, i, unit_in
@@ -63,7 +67,9 @@ contains
         close(unit_in)
     end subroutine load_phenos_plink
 
-    subroutine load_snp_binary()
+    subroutine load_snp_binary(config, gdata)
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(inout) :: gdata
         integer :: i, j, k, tr, unit_gen
         integer(1) :: b1
         real(dp), dimension(0:3) :: igen
@@ -95,7 +101,8 @@ contains
         close(unit_gen)
     end subroutine load_snp_binary
 
-    subroutine init_random_seed()
+    subroutine init_random_seed(config)
+        type(ModelConfig), intent(in) :: config
         integer :: i, n, clock_local
         integer, dimension(:), allocatable :: seed
 
@@ -114,7 +121,13 @@ contains
         deallocate(seed)
     end subroutine init_random_seed
 
-    subroutine allocate_data()
+    subroutine allocate_data(config, gdata, mstate, mstore)
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(inout) :: gdata
+        type(MCMCState), intent(inout) :: mstate
+        type(MCMCStorage), intent(inout) :: mstore
+        integer :: ios
+        
         if (.not. config%mcmc) then
             where (gdata%trains == 0) gdata%trains = 3
             where (gdata%trains == 1) gdata%trains = 0
@@ -127,7 +140,7 @@ contains
             gdata%X(gdata%nt, gdata%nloci), mstate%delta(config%ndist), mstate%dirx(config%ndist), &
             mstate%g(gdata%nloci), mstate%yadj(gdata%nt), &
             mstate%snpindist(config%ndist, config%ncat), mstate%varindist(config%ndist, config%ncat), &
-            z(gdata%nt), mstate%s(config%ndist), mstate%stemp(config%ndist), mstate%sstemp(config%ncat), &
+            mstate%z(gdata%nt), mstate%s(config%ndist), mstate%stemp(config%ndist), mstate%sstemp(config%ncat), &
             gdata%xpx(gdata%nloci), mstore%gstore(gdata%nloci), mstore%snpstore(config%ndist, config%ncat), &
             mstore%varstore(config%ndist, config%ncat), mstore%pstore(config%ndist, config%ncat), &
             mstore%indiststore(gdata%nloci, config%ndist), mstore%mu_vare_store(4), gdata%freqstore(gdata%nloci), &
@@ -144,7 +157,11 @@ contains
         end if
     end subroutine allocate_data
 
-    subroutine load_param()
+    subroutine load_param(config, gdata, mstore, mstate)
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(in) :: gdata
+        type(MCMCStorage), intent(inout) :: mstore
+        type(MCMCState), intent(inout) :: mstate
         character(len=100) :: str
         character(len=10) :: dum
         integer :: i, nc, ios_local, unit_param, unit_mod
@@ -167,7 +184,9 @@ contains
         close(unit_mod)
     end subroutine load_param
 
-    subroutine load_categories()
+    subroutine load_categories(config, gdata)
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(inout) :: gdata
         integer :: i, j, ios_local, unit_cat
         open(newunit=unit_cat, file=trim(config%catRC), iostat=ios_local, status='old', form="formatted")
         if (ios_local /= 0) stop 'Cannot open file! '
@@ -178,7 +197,9 @@ contains
         close(unit_cat)
     end subroutine load_categories
 
-    subroutine write_dgv()
+    subroutine write_dgv(config, gdata)
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(in) :: gdata
         integer :: i, unit_dgv
         character(len=2) :: missvalue
         missvalue = 'NA'
@@ -193,8 +214,11 @@ contains
         close(unit_dgv)
     end subroutine write_dgv
 
-    subroutine output_model()
-        integer :: i, j, unit_param, unit_mod
+    subroutine output_model(config, gdata, mstore)
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(in) :: gdata
+        type(MCMCStorage), intent(in) :: mstore
+        integer :: i, j, unit_param, unit_mod, ios
         character(len=20) :: ci, ca, cj
  
         open(newunit=unit_param, file=config%paramfil, status='unknown', iostat=ios)
@@ -266,7 +290,10 @@ contains
  800     format(a, t10, E15.7)
     end subroutine output_model
 
-    subroutine output_beta()
+    subroutine output_beta(config, mstate, gdata)
+        type(ModelConfig), intent(in) :: config
+        type(MCMCState), intent(in) :: mstate
+        type(GenomicData), intent(in) :: gdata
         integer :: i
         character(len=30) :: betai
         do i = 1, gdata%nloci

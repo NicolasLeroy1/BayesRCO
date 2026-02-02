@@ -1,11 +1,13 @@
 module mod_standardize
     use mod_defs, only: dp, GENOTYPE_MISSING_THRESHOLD
-    use mod_data
+    use mod_data, only: ModelConfig, GenomicData
     implicit none
 
 contains
 
-    subroutine xcenter()
+    subroutine xcenter(config, gdata)
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(inout) :: gdata
         integer :: j, nomiss
         real(dp) :: q, qtest
         real(dp), dimension(gdata%nt) :: xtemp

@@ -15,11 +15,11 @@ program bayesR
     call date_and_time(date=cdate, time=ctime)
     call parse()
 
-    call get_size()
-    call load_phenos_plink()
-    call allocate_data()
+    call get_size(config, gdata)
+    call load_phenos_plink(config, gdata)
+    call allocate_data(config, gdata, mstate, mstore)
     call parse_priors()
-    call load_categories()
+    call load_categories(config, gdata)
 
     if (config%mcmc) then
         open(newunit=config%unit_log, file=config%logfil, status='unknown', form='formatted')
@@ -48,9 +48,9 @@ program bayesR
         call flush(config%unit_log)
     end if
 
-    call load_snp_binary()
-    call xcenter()
-    call init_random_seed()
+    call load_snp_binary(config, gdata)
+    call xcenter(config, gdata)
+    call init_random_seed(config)
 
     if (config%mcmc) then
         mstate%nnind = dble(gdata%nt)
@@ -90,7 +90,8 @@ program bayesR
         if (config%dfvara < -2.0d0) then
             config%VCE = .false.
             mstate%yhat = sum(gdata%why, mask=gdata%trains == 0) / mstate%nnind
-            mstate%vary = sum((gdata%why - mstate%yhat) * (gdata%why - mstate%yhat), mask=gdata%trains == 0) / (mstate%nnind - 1.0d0)
+            mstate%vary = sum((gdata%why - mstate%yhat) * (gdata%why - mstate%yhat), mask=gdata%trains == 0) / &
+                (mstate%nnind - 1.0d0)
             mstate%vara = mstate%vara * mstate%vary
         else
             config%VCE = .true.
@@ -100,7 +101,7 @@ program bayesR
             if (config%dfvare == -2.0d0) config%vare_ap = 0.0d0
         end if
 
-        call run_mcmc()
+        call run_mcmc(config, gdata, mstate, mstore)
 
     else
         open(newunit=config%unit_log, file=config%logfil, status='unknown', form='formatted')
@@ -112,9 +113,9 @@ program bayesR
         write(config%unit_log, 903) 'No. of loci', gdata%nloci
         write(config%unit_log, 903) 'No. of individuals', gdata%nind
         write(config%unit_log, 903) 'No. of individuals to predict', gdata%nt
-        call load_param()
-        call compute_dgv()
-        call write_dgv()
+        call load_param(config, gdata, mstore, mstate)
+        call compute_dgv(gdata, mstate, mstore)
+        call write_dgv(config, gdata)
     end if
 
     call date_and_time(date=cdate, time=ctime)

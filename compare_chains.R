@@ -1,12 +1,11 @@
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 2) {
-  stop("Usage: Rscript compare_chains.R <ref.hyp> <new_fortran.hyp> [c.hyp] [output.pdf]")
+  stop("Usage: Rscript compare_chains.R <ref.hyp> <new_fortran.hyp> [output.pdf]")
 }
 
 ref_file <- args[1]
 new_file <- args[2]
-c_file   <- if (length(args) >= 3 && !grepl(".pdf$", args[3])) args[3] else NULL
-pdf_file <- if (length(args) >= 4) args[4] else if (length(args) == 3 && grepl(".pdf$", args[3])) args[3] else "verification_plots.pdf"
+pdf_file <- if (length(args) >= 3) args[3] else "verification_plots.pdf"
 
 if (!require("ggplot2", quietly = TRUE)) {
   cat("Installing ggplot2...\n")
@@ -51,20 +50,12 @@ ref_data <- read_hyp(ref_file, "Ref (Old)")
 cat("Reading new Fortran hyp file:", new_file, "\n")
 new_data <- read_hyp(new_file, "Ref (New)")
 
-c_data <- NULL
-if (!is.null(c_file)) {
-  cat("Reading C hyp file:", c_file, "\n")
-  c_data <- read_hyp(c_file, "C Version")
-}
 
 if (is.null(ref_data) || is.null(new_data)) {
   stop("Error: Failed to read data from required files.")
 }
 
 combined <- rbind(ref_data, new_data)
-if (!is.null(c_data)) {
-    combined <- rbind(combined, c_data)
-}
 
 # Create plots
 pdf(pdf_file, width = 12, height = 10)
@@ -115,13 +106,6 @@ if (!compare_dist(ref_data$Vare, new_data$Vare, "Vare", "New Fortran")) fail <- 
 if (!compare_dist(ref_data$h2,   new_data$h2,   "h2",   "New Fortran")) fail <- TRUE
 if (!compare_dist(ref_data$Nsnp, new_data$Nsnp, "Nsnp", "New Fortran")) fail <- TRUE
 
-if (!is.null(c_data)) {
-    cat("\n--- Checking C Version ---\n")
-    if (!compare_dist(ref_data$Vara, c_data$Vara, "Vara", "C Version")) fail <- TRUE
-    if (!compare_dist(ref_data$Vare, c_data$Vare, "Vare", "C Version")) fail <- TRUE
-    if (!compare_dist(ref_data$h2,   c_data$h2,   "h2",   "C Version")) fail <- TRUE
-    if (!compare_dist(ref_data$Nsnp, c_data$Nsnp, "Nsnp", "C Version")) fail <- TRUE
-}
 
 if (!fail) {
   cat("\nSUCCESS: Verification passed.\n")

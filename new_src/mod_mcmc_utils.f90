@@ -1,15 +1,19 @@
 module mod_mcmc_utils
     use mod_defs, only: dp
-    use mod_data
-    use mod_io
+    ! use mod_data ! Removed global import
+    use mod_data, only: ModelConfig, GenomicData, MCMCState, MCMCStorage
+    use mod_io, only: output_beta
     use mod_stats, only: compute_residuals
     implicit none
 
 contains
 
-    subroutine mcmc_save_samples_common(fmt1, fmt2)
+    subroutine mcmc_save_samples_common(fmt1, fmt2, config, gdata, mstate, mstore)
         character(len=*), intent(in) :: fmt1, fmt2
-        integer :: i, j
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(in) :: gdata
+        type(MCMCState), intent(inout) :: mstate
+        type(MCMCStorage), intent(inout) :: mstore
         
         mstate%counter = mstate%counter + 1
         mstore%gstore = mstore%gstore + mstate%g
@@ -22,17 +26,21 @@ contains
         mstore%varstore = mstore%varstore + mstate%varindist
         mstore%snpstore = mstore%snpstore + mstate%snpindist
         if (mstate%counter > 1) then
-            mstore%varustore = mstore%varustore + (mstate%counter * mstate%g - mstore%gstore)**2 / (mstate%counter * (mstate%counter - 1))
+            mstore%varustore = mstore%varustore + (mstate%counter * mstate%g - mstore%gstore)**2 / &
+                (mstate%counter * (mstate%counter - 1))
         end if
         
         write(config%unit_hyp, fmt1, advance='no') mstate%rep, mstate%included, mstate%vara, mstate%vare, mstate%snpindist
         write(config%unit_hyp, fmt2) mstate%varindist
         call flush(config%unit_hyp)
-        if (config%beta) call output_beta()
+        if (config%beta) call output_beta(config, mstate, gdata)
         ! if(config%cat) call output_cat 
     end subroutine mcmc_save_samples_common
 
-    subroutine mcmc_init_common()
+    subroutine mcmc_init_common(config, gdata, mstore)
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(inout) :: gdata
+        type(MCMCStorage), intent(inout) :: mstore
         integer :: i
         mstore%pstore = 0.0d0
         mstore%gstore = 0.0d0
@@ -50,7 +58,10 @@ contains
         gdata%nannot = sum(gdata%C(:, 1:config%ncat), dim=2)
     end subroutine mcmc_init_common
 
-    subroutine mcmc_start_values_common()
+    subroutine mcmc_start_values_common(config, gdata, mstate)
+        type(ModelConfig), intent(in) :: config
+        type(GenomicData), intent(inout) :: gdata
+        type(MCMCState), intent(inout) :: mstate
         integer :: j, k
         mstate%mu = 1.0d0
         mstate%yadj = 0.0d0
@@ -67,11 +78,13 @@ contains
         do k = 1, gdata%nloci
             gdata%permvec(k) = k
         end do
-        call compute_residuals()
+        call compute_residuals(gdata, mstate)
     end subroutine mcmc_start_values_common
 
-    subroutine mcmc_iteration_pre_common()
+    subroutine mcmc_iteration_pre_common(config, mstate)
         use mod_random, only: rand_chi_square, rand_normal
+        type(ModelConfig), intent(in) :: config
+        type(MCMCState), intent(inout) :: mstate
         integer :: i
         mstate%included = 0
         if (.not. config%VCE) then
@@ -86,12 +99,15 @@ contains
         end do
     end subroutine mcmc_iteration_pre_common
 
-    subroutine mcmc_update_hypers_common(nc)
+    subroutine mcmc_update_hypers_common(nc, config, mstate)
         use mod_random, only: rand_scaled_inverse_chi_square, rdirichlet
         integer, intent(in) :: nc
+        type(ModelConfig), intent(in) :: config
+        type(MCMCState), intent(inout) :: mstate
         integer :: i, j
         if (config%VCE) then
-            mstate%scale = (dble(mstate%included) * sum(mstate%g**2) + config%vara_ap * config%dfvara) / (config%dfvara + dble(mstate%included))
+            mstate%scale = (dble(mstate%included) * sum(mstate%g**2) + config%vara_ap * config%dfvara) / &
+                (config%dfvara + dble(mstate%included))
             mstate%vara = rand_scaled_inverse_chi_square(dble(mstate%included) + config%dfvara, mstate%scale)
             if (nc == 2) then ! BayesCpi variant
                  mstate%gp(2) = mstate%vara / mstate%included
@@ -112,7 +128,10 @@ contains
         end do
     end subroutine mcmc_update_hypers_common
 
-    subroutine mcmc_calculate_posterior_means()
+    subroutine mcmc_calculate_posterior_means(gdata, mstate, mstore)
+        type(GenomicData), intent(in) :: gdata
+        type(MCMCState), intent(in) :: mstate
+        type(MCMCStorage), intent(inout) :: mstore
         integer :: i
         mstore%gstore = mstore%gstore / mstate%counter
         mstore%pstore = mstore%pstore / mstate%counter
