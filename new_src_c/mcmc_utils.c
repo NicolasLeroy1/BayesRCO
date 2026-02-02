@@ -14,49 +14,6 @@
 #include <string.h>
 
 /* =========================================================================
- * Matrix Helper Functions
- * ========================================================================= */
-
-/**
- * Compute dot product of a column with a vector.
- * Assumes column-major storage: X[col_idx * n_rows + row]
- */
-double dot_product_col(double *X, int col_idx, int n_rows, int n_cols, double *vec) {
-    double sum = 0.0;
-    for (int i = 0; i < n_rows; i++) {
-        sum += X[col_idx * n_rows + i] * vec[i];
-    }
-    return sum;
-}
-
-/**
- * Add column * scalar to vector: vec += X[:, col_idx] * scalar
- * Assumes column-major storage.
- */
-void add_col_scalar(double *vec, double *X, int col_idx, int n_rows, int n_cols, double scalar) {
-    for (int i = 0; i < n_rows; i++) {
-        vec[i] += X[col_idx * n_rows + i] * scalar;
-    }
-}
-
-/* =========================================================================
- * Random Sampling Helpers
- * ========================================================================= */
-
-/**
- * Sample from a discrete distribution given probabilities.
- */
-int sample_discrete(double *probs, int n, prng_state *rs) {
-    double r = rng_uniform(rs, 0.0, 1.0);
-    double sum = 0.0;
-    for (int i = 0; i < n; i++) {
-        sum += probs[i];
-        if (r < sum) return i;
-    }
-    return n - 1;
-}
-
-/* =========================================================================
  * MCMC Common Functions
  * ========================================================================= */
 

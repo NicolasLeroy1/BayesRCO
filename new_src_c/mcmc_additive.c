@@ -37,13 +37,13 @@ void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
         
         /* If SNP has non-zero effect, add it back */
         if (gdata->current_distribution[snploc] > 1) {
-            add_snp_contribution(mstate->adjusted_phenotypes, gdata->genotypes,
-                                snploc, current_effect, nt, nloci);
+            add_col_scalar(mstate->adjusted_phenotypes, gdata->genotypes,
+                           snploc, nt, nloci, current_effect);
         }
         
         /* Compute RHS: X'y_adj */
-        double rhs = compute_rhs(gdata->genotypes, snploc, 
-                                mstate->adjusted_phenotypes, nt, nloci);
+        double rhs = dot_product_col(gdata->genotypes, snploc, 
+                                    mstate->adjusted_phenotypes, nt, nloci);
         
         /* Process each category in permuted order */
         for (int kcat = 0; kcat < ncat; kcat++) {
@@ -70,7 +70,7 @@ void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             stabilize_log_probs(mstate->selection_probs, log_probs, ndist);
             
             /* Sample distribution */
-            int dist_idx = sample_distribution_index(mstate->selection_probs, ndist, rs);
+            int dist_idx = sample_discrete(mstate->selection_probs, ndist, rs);
             
             /* Store assignment (1-based for compatibility) */
             gdata->distribution_per_category[snploc][j] = dist_idx + 1;
@@ -84,8 +84,8 @@ void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
                                               mstate->variance_residual,
                                               mstate->genomic_values, rs);
                 /* Subtract effect from adjusted phenotype */
-                subtract_snp_contribution(mstate->adjusted_phenotypes, gdata->genotypes,
-                                         snploc, cat_effect, nt, nloci);
+                add_col_scalar(mstate->adjusted_phenotypes, gdata->genotypes,
+                               snploc, nt, nloci, -cat_effect);
             }
             gdata->effects_per_category[snploc][j] = cat_effect;
         }

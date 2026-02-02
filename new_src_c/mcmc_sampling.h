@@ -5,27 +5,54 @@
  * @file mcmc_sampling.h
  * @brief Shared MCMC sampling functions for distribution selection and effect sampling.
  * 
- * This module contains common functions extracted from the mixture, additive, and BayesCpi
- * MCMC kernels to reduce code duplication and improve maintainability.
+ * This module contains core math and sampling routines used across all MCMC kernels.
  */
 
 #include "bayesRCO.h"
 #include "rng.h"
 
+/* =========================================================================
+ * Matrix and Vector Operations
+ * ========================================================================= */
+
+/**
+ * Compute dot product of a column with a vector.
+ * Calculates: sum = X[:, col_idx]' * vec
+ * 
+ * @param X           Genotype matrix (column-major: n_rows x n_cols)
+ * @param col_idx     Index of current column
+ * @param n_rows      Number of individuals (rows)
+ * @param n_cols      Number of loci (columns)
+ * @param vec         Vector to dot with (e.g., adjusted phenotypes)
+ * @return            Dot product result
+ */
+double dot_product_col(double *X, int col_idx, int n_rows, int n_cols, double *vec);
+
+/**
+ * Add column * scalar to vector: vec += X[:, col_idx] * scalar
+ * 
+ * @param vec         Target vector (modified in-place)
+ * @param X           Genotype matrix (column-major)
+ * @param col_idx     Index of current column
+ * @param n_rows      Number of individuals
+ * @param n_cols      Number of loci
+ * @param scalar      Multiplier
+ */
+void add_col_scalar(double *vec, double *X, int col_idx, int n_rows, int n_cols, double scalar);
+
+/* =========================================================================
+ * MCMC Specific Sampling
+ * ========================================================================= */
+
 /**
  * Compute log selection probabilities for each distribution.
  * 
- * Calculates the log-likelihood of each distribution for a given SNP based on:
- * - The right-hand side of the normal equation (rhs = X'y_adj)
- * - The sum of squares for the SNP (ssq = X'X)
- * - The current variance estimates
- * 
  * @param log_probs       Output array of log selection probabilities (size: num_dist)
- * @param rhs             Right-hand side of normal equation (X' * y_adj)
- * @param ssq             Sum of squares for current SNP (X' * X)
+ * @param rhs             Right-hand side (X' * y_adj)
+ * @param ssq             Sum of squares (X' * X)
  * @param vare            Residual variance
- * @param dist_variances  Variance for each distribution (size: num_dist)
- * @param log_mix_probs   Log mixture proportions for current category (size: num_dist)
+ * @param dist_variances  Variance for each distribution
+ * @param log_mix_probs   Log mixture proportions
  * @param num_dist        Number of distributions
  */
 void compute_log_selection_probs(
@@ -41,9 +68,6 @@ void compute_log_selection_probs(
 /**
  * Stabilize and normalize log probabilities using the log-sum-exp trick.
  * 
- * Converts log probabilities to normalized probabilities while avoiding
- * numerical overflow/underflow issues.
- * 
  * @param probs      Output array of normalized probabilities (size: n)
  * @param log_probs  Input array of log probabilities (size: n)
  * @param n          Number of probabilities
@@ -51,24 +75,21 @@ void compute_log_selection_probs(
 void stabilize_log_probs(double *probs, double *log_probs, int n);
 
 /**
- * Sample a distribution index from normalized probabilities.
+ * Sample a distribution index from (potentially unnormalized) probabilities.
  * 
- * @param probs   Normalized probability array (size: n)
- * @param n       Number of distributions
+ * @param probs   Probability array (size: n)
+ * @param n       Number of items
  * @param rs      Random number generator state
- * @return        Sampled distribution index (0-based)
+ * @return        Sampled index (0-based)
  */
-int sample_distribution_index(double *probs, int n, prng_state *rs);
+int sample_discrete(double *probs, int n, prng_state *rs);
 
 /**
  * Sample SNP effect given the selected distribution.
  * 
- * For the null distribution (dist_idx == 0), returns 0.
- * For other distributions, samples from the posterior normal distribution.
- * 
  * @param dist_idx        Selected distribution index (0-based)
- * @param rhs             Right-hand side of normal equation
- * @param ssq             Sum of squares for current SNP
+ * @param rhs             Right-hand side (X'y_adj)
+ * @param ssq             Sum of squares (X'X)
  * @param vare            Residual variance
  * @param dist_variances  Variance for each distribution
  * @param rs              Random number generator state
@@ -81,70 +102,6 @@ double sample_snp_effect(
     double vare,
     double *dist_variances,
     prng_state *rs
-);
-
-/**
- * Update the adjusted phenotype vector after sampling a new SNP effect.
- * 
- * Subtracts the new effect contribution from y_adj:
- *   y_adj = y_adj - X[:, snp_idx] * effect
- * 
- * @param y_adj       Adjusted phenotype vector (modified in-place)
- * @param X           Genotype matrix (column-major: nloci x nt)
- * @param snp_idx     Index of current SNP (column index)
- * @param effect      Effect size to subtract
- * @param n_ind       Number of individuals
- * @param n_loci      Number of loci
- */
-void subtract_snp_contribution(
-    double *y_adj,
-    double *X,
-    int snp_idx,
-    double effect,
-    int n_ind,
-    int n_loci
-);
-
-/**
- * Add a SNP contribution back to the adjusted phenotype vector.
- * 
- * Adds the effect contribution back to y_adj before resampling:
- *   y_adj = y_adj + X[:, snp_idx] * effect
- * 
- * @param y_adj       Adjusted phenotype vector (modified in-place)
- * @param X           Genotype matrix (column-major: nloci x nt)
- * @param snp_idx     Index of current SNP (column index)
- * @param effect      Effect size to add back
- * @param n_ind       Number of individuals
- * @param n_loci      Number of loci
- */
-void add_snp_contribution(
-    double *y_adj,
-    double *X,
-    int snp_idx,
-    double effect,
-    int n_ind,
-    int n_loci
-);
-
-/**
- * Compute the right-hand side of the effect sampling equation.
- * 
- * Calculates: rhs = X[:, snp_idx]' * y_adj
- * 
- * @param X           Genotype matrix (column-major: nloci x nt)
- * @param snp_idx     Index of current SNP (column index)
- * @param y_adj       Adjusted phenotype vector
- * @param n_ind       Number of individuals
- * @param n_loci      Number of loci
- * @return            Right-hand side value
- */
-double compute_rhs(
-    double *X,
-    int snp_idx,
-    double *y_adj,
-    int n_ind,
-    int n_loci
 );
 
 #endif // MCMC_SAMPLING_H

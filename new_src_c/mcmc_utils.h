@@ -2,13 +2,7 @@
 #define MCMC_UTILS_H
 
 #include "bayesRCO.h"
-
-// Helper functions for matrix operations
-double dot_product_col(double *X, int col_idx, int n_rows, int n_cols, double *vec);
-void add_col_scalar(double *vec, double *X, int col_idx, int n_rows, int n_cols, double scalar);
-
-// Helper for random discrete sampling
-int sample_discrete(double *probs, int n, prng_state *rs);
+#include "mcmc_sampling.h"
 
 // Common MCMC utility functions
 void mcmc_save_samples_common(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MCMCStorage *mstore);

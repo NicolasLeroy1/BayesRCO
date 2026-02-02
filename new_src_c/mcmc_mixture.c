@@ -93,10 +93,7 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
             }
             
             /* Compute RHS */
-            double rhs = 0.0;
-            for (int row = 0; row < nt; row++) {
-                rhs += gdata->genotypes[snploc * nt + row] * ytemp[row];
-            }
+            double rhs = dot_product_col(gdata->genotypes, snploc, nt, nloci, ytemp);
             
             /* Find maximum log probability for stability */
             double ssq_over_vare = ssq / mstate->variance_residual;
@@ -142,19 +139,7 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
             }
             
             /* Sample annotation */
-            double r = rng_uniform(rs, 0.0, 1.0);
-            double cumsum = 0.0;
-            int selected_cat = 0;
-            for (int kk = 0; kk < ncat; kk++) {
-                if (gdata->categories[snploc][kk] == 1) {
-                    cumsum += mstate->sstemp[kk];
-                    if (r < cumsum) {
-                        selected_cat = kk;
-                        break;
-                    }
-                }
-            }
-            gdata->current_category[snploc] = selected_cat;
+            gdata->current_category[snploc] = sample_discrete(mstate->sstemp, ncat, rs);
         }
     }
     
@@ -171,13 +156,13 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
         
         /* Add back current effect to adjusted phenotype */
         if (current_dist > 1) {
-            add_snp_contribution(mstate->adjusted_phenotypes, gdata->genotypes,
-                                snploc, current_effect, nt, nloci);
+            add_col_scalar(mstate->adjusted_phenotypes, gdata->genotypes,
+                           snploc, nt, nloci, current_effect);
         }
         
         /* Compute RHS */
-        double rhs = compute_rhs(gdata->genotypes, snploc, 
-                                mstate->adjusted_phenotypes, nt, nloci);
+        double rhs = dot_product_col(gdata->genotypes, snploc, 
+                                    mstate->adjusted_phenotypes, nt, nloci);
         
         /* Compute log selection probabilities */
         double *log_probs = mstate->log_likelihoods;
@@ -193,7 +178,7 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
         stabilize_log_probs(mstate->selection_probs, log_probs, ndist);
         
         /* Sample distribution */
-        int dist_idx = sample_distribution_index(mstate->selection_probs, ndist, rs);
+        int dist_idx = sample_discrete(mstate->selection_probs, ndist, rs);
         
         /* Store assignments (1-based for compatibility) */
         gdata->distribution_per_category[snploc][j] = dist_idx + 1;
@@ -204,11 +189,8 @@ void mcmc_mixture_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mst
         if (dist_idx == 0) {
             new_effect = 0.0;
         } else {
-            new_effect = sample_snp_effect(dist_idx, rhs, ssq,
-                                          mstate->variance_residual,
-                                          mstate->genomic_values, rs);
-            subtract_snp_contribution(mstate->adjusted_phenotypes, gdata->genotypes,
-                                     snploc, new_effect, nt, nloci);
+            add_col_scalar(mstate->adjusted_phenotypes, gdata->genotypes,
+                           snploc, nt, nloci, -new_effect);
             mstate->included++;
         }
         mstate->snp_effects[snploc] = new_effect;

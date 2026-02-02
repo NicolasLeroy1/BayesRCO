@@ -88,13 +88,13 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             
             /* If previously included (non-null), add effect back to adjusted phenotype */
             if (current_dist > 1) {
-                add_snp_contribution(mstate->adjusted_phenotypes, gdata->genotypes,
-                                    snploc, current_effect, nt, nloci);
+                add_col_scalar(mstate->adjusted_phenotypes, gdata->genotypes,
+                               snploc, nt, nloci, current_effect);
             }
             
             /* Compute right-hand side: X'y_adj */
-            double rhs = compute_rhs(gdata->genotypes, snploc, 
-                                    mstate->adjusted_phenotypes, nt, nloci);
+            double rhs = dot_product_col(gdata->genotypes, snploc, 
+                                        mstate->adjusted_phenotypes, nt, nloci);
             
             /* Compute log selection probabilities */
             /* Note: need to build log_mix_probs array for column j */
@@ -112,7 +112,7 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             stabilize_log_probs(probs, log_probs, ndist);
             
             /* Sample distribution index (0-based) */
-            int dist_idx = sample_distribution_index(probs, ndist, rs);
+            int dist_idx = sample_discrete(probs, ndist, rs);
             
             /* Store distribution assignment (1-based for output compatibility) */
             gdata->distribution_per_category[snploc][j] = dist_idx + 1;
@@ -127,8 +127,8 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
                                               mstate->variance_residual,
                                               mstate->genomic_values, rs);
                 /* Subtract effect from adjusted phenotype */
-                subtract_snp_contribution(mstate->adjusted_phenotypes, gdata->genotypes,
-                                         snploc, new_effect, nt, nloci);
+                add_col_scalar(mstate->adjusted_phenotypes, gdata->genotypes,
+                               snploc, nt, nloci, -new_effect);
                 mstate->included++;
             }
             

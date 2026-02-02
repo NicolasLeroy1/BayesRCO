@@ -3,7 +3,7 @@ CC = gcc
 CFLAGS = -O2 -Wall -lm
 
 # C source files
-SOURCES = main.c io.c mcmc.c mcmc_utils.c mcmc_mixture.c mcmc_additive.c mcmc_bayesCpi.c mcmc_sampling.c rng.c utils.c math_utils.c
+SOURCES = main.c io.c mcmc.c mcmc_utils.c mcmc_mixture.c mcmc_additive.c mcmc_bayesCpi.c mcmc_sampling.c rng.c utils.c
 
 # Output binary
 TARGET = bayesRCO_c
