@@ -45,12 +45,7 @@ module mod_data
         real(dp), dimension(:,:), allocatable :: indiststore, pstore, annotstore
     end type MCMCStorage
 
-    type(ModelConfig) :: config
-    type(GenomicData), target :: gdata
-    type(MCMCState), target   :: mstate
-    type(MCMCStorage) :: mstore
-
-    integer :: ios, clock
-
+    ! Global instances removed - now declared in main program
 
 end module mod_data
+

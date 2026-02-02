@@ -29,7 +29,8 @@ void permutate(prng_state *rs, int n, int *p) {
     // generate up to 100 u(0,1) numbers at a time.
     for (i = 0; i < n; i += 100) {
         m = (n - i < 100) ? (n - i) : 100;
-        for (int x = 0; x < m; x++) u[x] = rand_uniform(rs, 0.0, 1.0); // Assuming rand_uniform takes state
+        for (int x = 0; x < 100; x++) u[x] = rand_uniform(rs, 0.0, 1.0); 
+// Assuming rand_uniform takes state
         
         for (j = 0; j < m; j++) {
             ipj = i + j; // 0-based index

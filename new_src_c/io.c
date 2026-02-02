@@ -83,7 +83,7 @@ void load_phenos_plink(ModelConfig *config, GenomicData *gdata) {
                     int k=0;
                     while (*p && !isspace(*p) && k<99) temp[k++] = *p++;
                     temp[k] = '\0';
-                    if (strcmp(temp, "NA") == 0 || strcmp(temp, "-9") == 0) {
+                    if (strcmp(temp, "NA") == 0) {
                          val = MISSING_VALUE;
                     } else {
                          val = atof(temp);
@@ -100,7 +100,7 @@ void load_phenos_plink(ModelConfig *config, GenomicData *gdata) {
             current_col++;
         }
         
-        if (found && val != MISSING_VALUE && val != -9.0) { // -9 is generic PLINK missing too
+        if (found && val != MISSING_VALUE) { 
              gdata->trains[i] = 0;
              gdata->why[i] = val;
         } else {

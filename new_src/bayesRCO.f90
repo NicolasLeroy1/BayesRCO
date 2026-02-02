@@ -1,6 +1,6 @@
 program bayesR
     use mod_defs, only: dp
-    use mod_data
+    use mod_data, only: ModelConfig, GenomicData, MCMCState, MCMCStorage
     use mod_cmd
     use mod_io
     use mod_stats
@@ -8,17 +8,23 @@ program bayesR
     use mod_standardize
     implicit none
 
+    ! Local declarations (previously global)
+    type(ModelConfig) :: config
+    type(GenomicData), target :: gdata
+    type(MCMCState), target   :: mstate
+    type(MCMCStorage) :: mstore
+
     integer :: i, j
     character(len=8)  :: cdate
     character(len=10) :: ctime, ci, ca, cj
 
     call date_and_time(date=cdate, time=ctime)
-    call parse()
+    call parse(config)
 
     call get_size(config, gdata)
     call load_phenos_plink(config, gdata)
     call allocate_data(config, gdata, mstate, mstore)
-    call parse_priors()
+    call parse_priors(config, mstate)
     call load_categories(config, gdata)
 
     if (config%mcmc) then

@@ -1,6 +1,6 @@
 module mod_cmd
     use mod_defs, only: dp
-    use mod_data
+    use mod_data, only: ModelConfig, GenomicData, MCMCState, MCMCStorage
     implicit none
 
     integer :: narg, nopt
@@ -206,24 +206,26 @@ contains
         end do
     end subroutine parse_help
 
-    subroutine parse()
+    subroutine parse(config)
+        type(ModelConfig), intent(inout) :: config
         call init_register()
         call get_cmdLine()
         call parse_help()
         call update_register()
-        call parse_out()
-        call parse_method()
-        call parse_plink()
-        call parse_categorie()
-        call parse_ncat()
-        call parse_trait_pos()
-        call parse_predict()
-        call parse_ndist()
-        call parse_initialise()
-        call parse_bayesCpi()
+        call parse_out(config)
+        call parse_method(config)
+        call parse_plink(config)
+        call parse_categorie(config)
+        call parse_ncat(config)
+        call parse_trait_pos(config)
+        call parse_predict(config)
+        call parse_ndist(config)
+        call parse_initialise(config)
+        call parse_bayesCpi(config)
     end subroutine parse
 
-    subroutine parse_out()
+    subroutine parse_out(config)
+        type(ModelConfig), intent(inout) :: config
         integer :: i
         do i = 1, nopt
             if (str_match(trim(register%key(i)), '-out')) then
@@ -242,7 +244,8 @@ contains
         end do
     end subroutine parse_out
 
-    subroutine parse_method()
+    subroutine parse_method(config)
+        type(ModelConfig), intent(inout) :: config
         integer :: i
         config%mixture = .true.
         do i = 1, nopt
@@ -252,7 +255,8 @@ contains
         end do
     end subroutine parse_method
 
-    subroutine parse_plink()
+    subroutine parse_plink(config)
+        type(ModelConfig), intent(inout) :: config
         integer :: i
         logical :: fileExist
         do i = 1, nopt
@@ -268,7 +272,8 @@ contains
         end do
     end subroutine parse_plink
 
-    subroutine parse_categorie()
+    subroutine parse_categorie(config)
+        type(ModelConfig), intent(inout) :: config
         integer :: i
         logical :: fileExist
         do i = 1, nopt
@@ -280,7 +285,8 @@ contains
         end do
     end subroutine parse_categorie
 
-    subroutine parse_trait_pos()
+    subroutine parse_trait_pos(config)
+        type(ModelConfig), intent(inout) :: config
         integer :: i
         do i = 1, nopt
             if (str_match(trim(register%key(i)), '-n')) then
@@ -289,7 +295,8 @@ contains
         end do
     end subroutine parse_trait_pos
 
-    subroutine parse_ncat()
+    subroutine parse_ncat(config)
+        type(ModelConfig), intent(inout) :: config
         integer :: i
         do i = 1, nopt
             if (str_match(trim(register%key(i)), '-ncat')) then
@@ -298,7 +305,8 @@ contains
         end do
     end subroutine parse_ncat
 
-    subroutine parse_predict()
+    subroutine parse_predict(config)
+        type(ModelConfig), intent(inout) :: config
         integer :: i
         logical :: flag, fileExist
         config%mcmc = .true.
@@ -320,7 +328,8 @@ contains
         end if
     end subroutine parse_predict
 
-    subroutine parse_ndist()
+    subroutine parse_ndist(config)
+        type(ModelConfig), intent(inout) :: config
         integer :: i
         do i = 1, nopt
             if (str_match(trim(register%key(i)), '-ndist')) then
@@ -329,7 +338,9 @@ contains
         end do
     end subroutine parse_ndist
 
-    subroutine parse_priors()
+    subroutine parse_priors(config, mstate)
+        type(ModelConfig), intent(inout) :: config
+        type(MCMCState), intent(inout) :: mstate
         integer :: i, k, nitem
         character(len=128), dimension(:), allocatable :: c_string
         allocate(c_string(config%ndist))
@@ -362,7 +373,8 @@ contains
         end do
     end subroutine parse_priors
 
-    subroutine parse_initialise()
+    subroutine parse_initialise(config)
+        type(ModelConfig), intent(inout) :: config
         integer :: i
         do i = 1, nopt
             if (str_match(trim(register%key(i)), '-msize')) then
@@ -390,7 +402,8 @@ contains
         end do
     end subroutine parse_initialise
 
-    subroutine parse_bayesCpi()
+    subroutine parse_bayesCpi(config)
+        type(ModelConfig), intent(inout) :: config
         integer :: i
         config%nobayesCpi = .true.
         do i = 1, nopt
