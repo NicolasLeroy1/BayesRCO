@@ -1,11 +1,12 @@
-# Prerequisites
-*.d
-
 # Compiled Object files
-*.slo
-*.lo
 *.o
 *.obj
+*.slo
+*.lo
+
+# Fortran module files
+*.mod
+*.smod
 
 # Precompiled Headers
 *.gch
@@ -15,10 +16,6 @@
 *.so
 *.dylib
 *.dll
-
-# Fortran module files
-*.mod
-*.smod
 
 # Compiled Static libraries
 *.lai
@@ -30,22 +27,24 @@
 *.exe
 *.out
 *.app
-.Rproj.user
-*.Rproj
+bin/
 
 # Build Artifacts
-/bin/
-/build/
-/build_ref/
+build/
 
-# Verification Outputs
-/out_ref/
-/out_new/
-/out_benchmark/
-/debug_c/
-/debug_run/
+# Outputs and Plots
+outputs/
+plots/
+out_*/
+debug_*/
 verification_plots.pdf
-
-# Log files
 *.log
 fort.21
+
+# IDE and Project files
+.Rproj.user
+*.Rproj
+.vscode/
+.idea/
+*.swp
+*~

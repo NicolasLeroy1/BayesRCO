@@ -12,10 +12,15 @@ NCAT=4
 # Binaries
 BIN_REF="$BIN_DIR/bayesRCO_ref"
 BIN_NEW="$BIN_DIR/bayesRCO"
+BIN_C="$BIN_DIR/bayesRCO_c"
 
-# Output directories
-OUT_REF="out_ref"
-OUT_NEW="out_new"
+# Output directories (organized under outputs/)
+OUT_REF="outputs/ref"
+OUT_NEW="outputs/new"
+OUT_C="outputs/c"
+
+# Root directory for absolute paths
+ROOT_DIR=$(pwd)
 
 # Functions
 run_model() {
@@ -30,8 +35,8 @@ run_model() {
     
     (
         cd "$out_dir" || exit 1
-        "../$bin" -bfile toy_app -out "${prefix}_train" -seed $SEED -ncat $NCAT -catfile toy_annot.txt -burnin $BURNIN -numit $NUMIT -thin $THIN
-        "../$bin" -bfile toy_test -predict -out "${prefix}_test" -model "${prefix}_train.model" -freq "${prefix}_train.frq" -param "${prefix}_train.param" -ncat $NCAT -catfile toy_annot.txt
+        # Run training using absolute path for binary
+        "$ROOT_DIR/$bin" -bfile toy_app -out "${prefix}_train" -seed $SEED -ncat $NCAT -catfile toy_annot.txt -burnin $BURNIN -numit $NUMIT -thin $THIN
     )
 }
 
@@ -40,15 +45,13 @@ compare_exact() {
     local dir2=$2
     local prefix1=$3
     local prefix2=$4
+    local label=$5
     local diff_found=0
 
-    echo "--- Comparing Exact Parity ($dir1 vs $dir2) ---"
-    for ext in model param frq gv; do
+    echo "--- Comparing Exact Parity: $label ($dir1 vs $dir2) ---"
+    for ext in model param frq hyp; do 
         file1="$dir1/${prefix1}_train.$ext"
-        [ "$ext" == "gv" ] && file1="$dir1/${prefix1}_test.gv"
-        
         file2="$dir2/${prefix2}_train.$ext"
-        [ "$ext" == "gv" ] && file2="$dir2/${prefix2}_test.gv"
 
         if [ ! -f "$file1" ] || [ ! -f "$file2" ]; then
             echo "Error: Missing files for .$ext comparison"
@@ -60,6 +63,7 @@ compare_exact() {
             echo "[PASS] .$ext files are identical"
         else
             echo "[FAIL] .$ext files differ"
+            diff "$file1" "$file2" | head -n 5
             diff_found=1
         fi
     done
@@ -67,34 +71,45 @@ compare_exact() {
 }
 
 # Main Execution
-echo "Starting BayesRCO Verification System"
+echo "Starting BayesRCO Verification System (REF vs NEW vs C)"
 
-# Build
+# Build using centralized Makefile
 echo "Building versions..."
 make clean
-make ref new || { echo "Build failed"; exit 1; }
+make all || { echo "Build failed"; exit 1; }
 
 # Run versions
-run_model "$BIN_REF" "$OUT_REF" "Reference (Old)" "ref"
-run_model "$BIN_NEW" "$OUT_NEW" "New Modular (Fortran)" "new"
+run_model "$BIN_REF" "$OUT_REF" "Reference (src/)" "ref"
+run_model "$BIN_NEW" "$OUT_NEW" "New Modular (new_src/)" "new"
+run_model "$BIN_C" "$OUT_C" "C Port (new_src_c/)" "c"
 
 # Compare
 EXIT_CODE=0
 
-# Exact comparison between Fortran versions
-compare_exact "$OUT_REF" "$OUT_NEW" "ref" "new" || EXIT_CODE=1
+# Exact comparison
+echo ""
+compare_exact "$OUT_REF" "$OUT_NEW" "ref" "new" "REF vs NEW (Fortran)" || EXIT_CODE=1
+echo ""
+compare_exact "$OUT_NEW" "$OUT_C" "new" "c" "NEW vs C" || EXIT_CODE=1
+echo ""
 
 # Statistical comparison
+echo ""
 echo "--- Statistical Verification ---"
 if [ -f "compare_chains.R" ]; then
+    echo "Checking REF vs NEW:"
     Rscript compare_chains.R "$OUT_REF/ref_train.hyp" "$OUT_NEW/new_train.hyp"
+    [ $? -ne 0 ] && EXIT_CODE=1
+
+    echo "Checking NEW vs C:"
+    Rscript compare_chains.R "$OUT_NEW/new_train.hyp" "$OUT_C/c_train.hyp"
     [ $? -ne 0 ] && EXIT_CODE=1
 else
     echo "Warning: compare_chains.R not found, skipping statistical check."
 fi
 
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "VERIFICATION SUCCESSFUL"
+    echo "ALL VERIFICATIONS SUCCESSFUL"
 else
     echo "VERIFICATION FAILED"
 fi

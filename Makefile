@@ -1,37 +1,38 @@
-# Compiler
+# Compilers
 FC = gfortran
+CC = gcc
 
 # Directories
 SRC_DIR = new_src
 REF_DIR = src
+C_SRC_DIR = new_src_c
 BIN_DIR = bin
 BUILD_DIR = build
-BUILD_REF_DIR = build_ref
+BUILD_REF_DIR = $(BUILD_DIR)/ref
+BUILD_C_DIR = $(BUILD_DIR)/c
+OUT_DIR = outputs
+PLOT_DIR = plots
+
+# Include modular definitions
+include $(SRC_DIR)/makefile.mk
+include $(REF_DIR)/makefile.mk
+include $(C_SRC_DIR)/makefile.mk
 
 # Executables
 TARGET = $(BIN_DIR)/bayesRCO
 TARGET_REF = $(BIN_DIR)/bayesRCO_ref
+TARGET_C = $(BIN_DIR)/bayesRCO_c
 
-# Source files for the new version
-# Order matters slightly for compilation, but dependencies are explicit below
-MODULE_FILES = mod_defs.f90 mod_data.f90 mod_random.f90 mod_cmd.f90 mod_io.f90 \
-               mod_standardize.f90 mod_stats.f90 mod_mcmc_utils.f90 \
-               mod_mcmc_mixture.f90 mod_mcmc_additive.f90 mod_mcmc_bayesCpi.f90 mod_mcmc.f90
-MODULES = $(addprefix $(SRC_DIR)/, $(MODULE_FILES))
-MAIN = $(SRC_DIR)/bayesRCO.f90
-SOURCES = $(MODULES) $(MAIN)
-OBJECTS = $(addprefix $(BUILD_DIR)/, $(MODULE_FILES:.f90=.o)) $(BUILD_DIR)/bayesRCO.o
+# Objects (Derived from modular includes)
+OBJECTS = $(addprefix $(BUILD_DIR)/, $(NEW_MODULE_FILES:.f90=.o)) $(BUILD_DIR)/$(NEW_MAIN:.f90=.o)
+REF_OBJECTS = $(addprefix $(BUILD_REF_DIR)/, $(REF_MODULE_FILES:.f90=.o)) $(BUILD_REF_DIR)/$(REF_MAIN:.f90=.o)
+C_OBJECTS = $(addprefix $(BUILD_C_DIR)/, $(C_SOURCE_FILES:.c=.o))
 
-# Source files for the reference version
-REF_MODULE_FILES = RandomDistributions.f90 baymodsRCO.f90
-REF_MODULES = $(addprefix $(REF_DIR)/, $(REF_MODULE_FILES))
-REF_MAIN = $(REF_DIR)/bayesRCO.f90
-REF_SOURCES = $(REF_MODULES) $(REF_MAIN)
-REF_OBJECTS = $(addprefix $(BUILD_REF_DIR)/, $(REF_MODULE_FILES:.f90=.o)) $(BUILD_REF_DIR)/bayesRCO.o
+.PHONY: all clean ref new c verify directories
 
-.PHONY: all clean ref new verify
+all: directories ref new c
 
-all: ref new
+directories: $(BIN_DIR) $(BUILD_DIR) $(BUILD_REF_DIR) $(BUILD_C_DIR) $(OUT_DIR) $(PLOT_DIR)
 
 # New modularized version (Fortran)
 new: $(TARGET)
@@ -42,7 +43,7 @@ $(TARGET): $(OBJECTS) | $(BIN_DIR)
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.f90 | $(BUILD_DIR)
 	$(FC) -O3 -J$(BUILD_DIR) -c -o $@ $<
 
-# Explicit Module Dependencies (from 'use' statements)
+# Explicit Module Dependencies (Fortran)
 $(BUILD_DIR)/mod_data.o: $(BUILD_DIR)/mod_defs.o
 $(BUILD_DIR)/mod_random.o: $(BUILD_DIR)/mod_defs.o
 $(BUILD_DIR)/mod_cmd.o: $(BUILD_DIR)/mod_defs.o $(BUILD_DIR)/mod_data.o
@@ -69,8 +70,17 @@ $(BUILD_REF_DIR)/%.o: $(REF_DIR)/%.f90 | $(BUILD_REF_DIR)
 $(BUILD_REF_DIR)/baymodsRCO.o: $(REF_DIR)/baymodsRCO.f90 $(BUILD_REF_DIR)/RandomDistributions.o
 $(BUILD_REF_DIR)/bayesRCO.o: $(REF_DIR)/bayesRCO.f90 $(BUILD_REF_DIR)/RandomDistributions.o $(BUILD_REF_DIR)/baymodsRCO.o
 
+# C version
+c: $(TARGET_C)
+
+$(TARGET_C): $(C_OBJECTS) | $(BIN_DIR)
+	$(CC) -O3 -o $@ $^ -lm
+
+$(BUILD_C_DIR)/%.o: $(C_SRC_DIR)/%.c | $(BUILD_C_DIR)
+	$(CC) -O3 -I$(C_SRC_DIR) -c -o $@ $<
+
 # Helper to ensure directories exist
-$(BIN_DIR) $(BUILD_DIR) $(BUILD_REF_DIR):
+$(BIN_DIR) $(BUILD_DIR) $(BUILD_REF_DIR) $(BUILD_C_DIR) $(OUT_DIR) $(PLOT_DIR):
 	mkdir -p $@
 
 # Verification
@@ -78,5 +88,7 @@ verify: all
 	./verify_equivalence.sh
 
 clean:
-	rm -rf $(BIN_DIR) $(BUILD_DIR) $(BUILD_REF_DIR) out_ref out_new
+	rm -rf $(BIN_DIR) $(BUILD_DIR) $(OUT_DIR) $(PLOT_DIR) out_ref out_new out_c out_benchmark debug_run debug_c
 	find . -name "*.mod" -delete
+	find . -name "*.o" -delete
+

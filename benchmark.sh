@@ -2,7 +2,7 @@
 
 # Configuration
 TOY_DIR="toy_dataset"
-OUT_BM="out_benchmark"
+OUT_BM="outputs/benchmark"
 NUMIT=5000
 BURNIN=1000
 
@@ -40,15 +40,18 @@ run_benchmark() {
     echo ""
 }
 
+# Go to benchmark directory
+# We use absolute paths for binaries to avoid ../ issues if moved
+ROOT_DIR=$(pwd)
 cd $OUT_BM
 
 # 1. Reference Fortran
-run_benchmark "Reference_Fortran" "../$BIN_REF -bfile toy_app -out toy_bm_ref -seed 10 -ncat 4 -catfile toy_annot.txt -burnin $BURNIN -numit $NUMIT"
+run_benchmark "Reference_Fortran" "$ROOT_DIR/$BIN_REF -bfile toy_app -out toy_bm_ref -seed 10 -ncat 4 -catfile toy_annot.txt -burnin $BURNIN -numit $NUMIT"
 
 # 2. New Fortran
-run_benchmark "New_Fortran" "../$BIN_NEW -bfile toy_app -out toy_bm_new -seed 10 -ncat 4 -catfile toy_annot.txt -burnin $BURNIN -numit $NUMIT"
+run_benchmark "New_Fortran" "$ROOT_DIR/$BIN_NEW -bfile toy_app -out toy_bm_new -seed 10 -ncat 4 -catfile toy_annot.txt -burnin $BURNIN -numit $NUMIT"
 
 # 3. C Version
-run_benchmark "C_Version" "../$BIN_C -bfile toy_app -out toy_bm_c -seed 10 -ncat 4 -catfile toy_annot.txt -burnin $BURNIN -numit $NUMIT"
+run_benchmark "C_Version" "$ROOT_DIR/$BIN_C -bfile toy_app -out toy_bm_c -seed 10 -ncat 4 -catfile toy_annot.txt -burnin $BURNIN -numit $NUMIT"
 
-cd ..
+cd $ROOT_DIR
