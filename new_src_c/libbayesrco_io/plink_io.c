@@ -162,7 +162,11 @@ int io_get_size(IOConfig *ioconfig, GenomicData *gdata) {
     char bim_path[PATH_MAX_LENGTH];
     strncpy(bim_path, ioconfig->geno_file_path, PATH_MAX_LENGTH-1);
     char *ext = strrchr(bim_path, '.');
-    if (ext) strcpy(ext, ".bim");
+    if (ext && (strcmp(ext, ".bed") == 0 || strcmp(ext, ".bim") == 0 || strcmp(ext, ".fam") == 0)) {
+        strcpy(ext, ".bim");
+    } else {
+        strncat(bim_path, ".bim", PATH_MAX_LENGTH - strlen(bim_path) - 1);
+    }
     
     gdata->num_loci = 0;
     fp = fopen(bim_path, "r");
@@ -193,6 +197,7 @@ int io_load_phenotypes(IOConfig *ioconfig, GenomicData *gdata) {
     fp = fopen(ioconfig->pheno_file_path, "r");
     if (!fp) return ERR_FILE_IO;
     
+    gdata->num_phenotyped_individuals = 0;
     for (int i = 0; i < gdata->num_individuals; i++) {
         if (!fgets(line, sizeof(line), fp)) break;
         
@@ -211,7 +216,7 @@ int io_load_phenotypes(IOConfig *ioconfig, GenomicData *gdata) {
         }
         
         if (*p) {
-            if (strncmp(p, "NA", 2) == 0 || strncmp(p, "-9", 2) == 0) {
+            if (strncmp(p, "NA", 2) == 0) {
                 val = MISSING_VALUE;
             } else {
                 val = atof(p);
@@ -221,6 +226,7 @@ int io_load_phenotypes(IOConfig *ioconfig, GenomicData *gdata) {
         if (val != MISSING_VALUE) { 
             gdata->trains[i] = 0;
             gdata->phenotypes[i] = val;
+            gdata->num_phenotyped_individuals++;
         } else {
             gdata->trains[i] = 1;
             gdata->phenotypes[i] = MISSING_VALUE;
@@ -241,7 +247,17 @@ int io_load_genotypes(IOConfig *ioconfig, GenomicData *gdata) {
     gdata->genotypes = (double*)calloc(gdata->num_loci * gdata->num_phenotyped_individuals, sizeof(double));
     if (!gdata->genotypes) return ERR_MEMORY;
     
-    fp = fopen(ioconfig->geno_file_path, "rb");
+    /* Handle missing .bed extension */
+    char bed_path[PATH_MAX_LENGTH];
+    strncpy(bed_path, ioconfig->geno_file_path, PATH_MAX_LENGTH-1);
+    char *ext = strrchr(bed_path, '.');
+    if (ext && (strcmp(ext, ".bed") == 0 || strcmp(ext, ".bim") == 0 || strcmp(ext, ".fam") == 0)) {
+        strcpy(ext, ".bed");
+    } else {
+        strncat(bed_path, ".bed", PATH_MAX_LENGTH - strlen(bed_path) - 1);
+    }
+
+    fp = fopen(bed_path, "rb");
     if (!fp) return ERR_FILE_IO;
     
     /* Read magic bytes */

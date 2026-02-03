@@ -164,7 +164,7 @@ program test_mcmc_mixture
 
     print *, "g_after_kernel:"
     do j = 1, gdata%nloci
-        print "(F20.16)", mstate%g(j)
+        print "(E25.16)", mstate%g(j)
     end do
 
     print *, "snpindist_after_kernel:"

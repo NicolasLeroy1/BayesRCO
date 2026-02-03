@@ -35,6 +35,7 @@ void rng_dirichlet2(prng_state *rs, int n, double *irx, double *x);
 /* Backward-compatible aliases for legacy code */
 #define rand_uniform rng_uniform
 #define rand_normal rng_normal
+#define rand_gamma rng_gamma
 #define rand_chi_square rng_chi_square
 #define rand_scaled_inverse_chi_square rng_scaled_inverse_chi_square
 #define rdirichlet rng_dirichlet

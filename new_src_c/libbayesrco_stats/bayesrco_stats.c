@@ -99,7 +99,7 @@ static int allocate_internal_data(const MCMCParams *params, int nloci, int nt, i
     /* Allocate MCMCState arrays */
     mstate->snp_effects = (double*)calloc(nloci, sizeof(double));
     mstate->adjusted_phenotypes = (double*)calloc(nt, sizeof(double));
-    mstate->genomic_values = (double*)calloc(ndist, sizeof(double));
+    mstate->distribution_variances = (double*)calloc(ndist, sizeof(double));
     mstate->variance_scaling_factors = (double*)calloc(ndist, sizeof(double));
     mstate->dirichlet_priors = (double*)calloc(ndist, sizeof(double));
     mstate->log_distribution_variances = (double*)calloc(ndist, sizeof(double));
@@ -119,7 +119,7 @@ static int allocate_internal_data(const MCMCParams *params, int nloci, int nt, i
     mstate->z = (double*)calloc(nt, sizeof(double));
     
     if (!mstate->snp_effects || !mstate->adjusted_phenotypes ||
-        !mstate->genomic_values || !mstate->variance_scaling_factors ||
+        !mstate->distribution_variances || !mstate->variance_scaling_factors ||
         !mstate->dirichlet_priors || !mstate->log_distribution_variances ||
         !mstate->residual_variance_over_distribution_variances ||
         !mstate->p || !mstate->log_p || !mstate->variance_per_distribution ||
@@ -171,7 +171,7 @@ static void free_internal_data(GenomicData *gdata, MCMCState *mstate, MCMCStorag
     /* Free MCMCState */
     if (mstate->snp_effects) free(mstate->snp_effects);
     if (mstate->adjusted_phenotypes) free(mstate->adjusted_phenotypes);
-    if (mstate->genomic_values) free(mstate->genomic_values);
+    if (mstate->distribution_variances) free(mstate->distribution_variances);
     if (mstate->variance_scaling_factors) free(mstate->variance_scaling_factors);
     if (mstate->dirichlet_priors) free(mstate->dirichlet_priors);
     if (mstate->log_distribution_variances) free(mstate->log_distribution_variances);

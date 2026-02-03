@@ -318,62 +318,70 @@ int io_load_frequencies(IOConfig *ioconfig, GenomicData *gdata) {
  */
 void io_cleanup(IOConfig *ioconfig, GenomicData *gdata, MCMCState *mstate, MCMCStorage *mstore) {
     /* Close file handles */
-    if (ioconfig->fp_log) { fclose(ioconfig->fp_log); ioconfig->fp_log = NULL; }
-    if (ioconfig->fp_hyp) { fclose(ioconfig->fp_hyp); ioconfig->fp_hyp = NULL; }
-    if (ioconfig->fp_snp) { fclose(ioconfig->fp_snp); ioconfig->fp_snp = NULL; }
-    if (ioconfig->fp_cat) { fclose(ioconfig->fp_cat); ioconfig->fp_cat = NULL; }
-    if (ioconfig->fp_beta) { fclose(ioconfig->fp_beta); ioconfig->fp_beta = NULL; }
+    if (ioconfig) {
+        if (ioconfig->fp_log) { fclose(ioconfig->fp_log); ioconfig->fp_log = NULL; }
+        if (ioconfig->fp_hyp) { fclose(ioconfig->fp_hyp); ioconfig->fp_hyp = NULL; }
+        if (ioconfig->fp_snp) { fclose(ioconfig->fp_snp); ioconfig->fp_snp = NULL; }
+        if (ioconfig->fp_cat) { fclose(ioconfig->fp_cat); ioconfig->fp_cat = NULL; }
+        if (ioconfig->fp_beta) { fclose(ioconfig->fp_beta); ioconfig->fp_beta = NULL; }
+    }
     
     /* Free GenomicData */
-    SAFE_FREE(gdata->phenotypes);
-    SAFE_FREE(gdata->predicted_values);
-    SAFE_FREE(gdata->allele_frequencies);
-    SAFE_FREE(gdata->snp_correlations);
-    SAFE_FREE(gdata->included_loci);
-    SAFE_FREE(gdata->genotypes);
-    SAFE_FREE(gdata->annotations_per_locus);
-    SAFE_FREE(gdata->current_category);
-    SAFE_FREE(gdata->current_distribution);
-    SAFE_FREE(gdata->trains);
-    SAFE_FREE(gdata->permvec);
-    SAFE_FREE(gdata->permannot);
-    SAFE_FREE(gdata->atemp);
-    SAFE_FREE(gdata->categories);
-    SAFE_FREE(gdata->distribution_per_category);
-    SAFE_FREE(gdata->effects_per_category);
+    if (gdata) {
+        SAFE_FREE(gdata->phenotypes);
+        SAFE_FREE(gdata->predicted_values);
+        SAFE_FREE(gdata->allele_frequencies);
+        SAFE_FREE(gdata->snp_correlations);
+        SAFE_FREE(gdata->included_loci);
+        SAFE_FREE(gdata->genotypes);
+        SAFE_FREE(gdata->annotations_per_locus);
+        SAFE_FREE(gdata->current_category);
+        SAFE_FREE(gdata->current_distribution);
+        SAFE_FREE(gdata->trains);
+        SAFE_FREE(gdata->permvec);
+        SAFE_FREE(gdata->permannot);
+        SAFE_FREE(gdata->atemp);
+        SAFE_FREE(gdata->categories);
+        SAFE_FREE(gdata->distribution_per_category);
+        SAFE_FREE(gdata->effects_per_category);
+    }
     
     /* Free MCMCState */
-    SAFE_FREE(mstate->genomic_values);
-    SAFE_FREE(mstate->variance_scaling_factors);
-    SAFE_FREE(mstate->dirichlet_priors);
-    SAFE_FREE(mstate->snp_effects);
-    SAFE_FREE(mstate->adjusted_phenotypes);
-    SAFE_FREE(mstate->dirichlet_scratch);
-    SAFE_FREE(mstate->category_probabilities);
-    SAFE_FREE(mstate->ytemp);
-    SAFE_FREE(mstate->category_dirichlet_scratch);
-    SAFE_FREE(mstate->log_likelihoods);
-    SAFE_FREE(mstate->selection_probs);
-    SAFE_FREE(mstate->sstemp);
-    SAFE_FREE(mstate->ss);
-    SAFE_FREE(mstate->log_distribution_variances);
-    SAFE_FREE(mstate->residual_variance_over_distribution_variances);
-    SAFE_FREE(mstate->z);
-    SAFE_FREE(mstate->variance_per_distribution);
-    SAFE_FREE(mstate->p);
-    SAFE_FREE(mstate->log_p);
-    SAFE_FREE(mstate->snps_per_distribution);
+    if (mstate) {
+        SAFE_FREE(mstate->genomic_values);
+        SAFE_FREE(mstate->variance_scaling_factors);
+        SAFE_FREE(mstate->dirichlet_priors);
+        SAFE_FREE(mstate->snp_effects);
+        SAFE_FREE(mstate->adjusted_phenotypes);
+        SAFE_FREE(mstate->dirichlet_scratch);
+        SAFE_FREE(mstate->category_probabilities);
+        SAFE_FREE(mstate->ytemp);
+        SAFE_FREE(mstate->category_dirichlet_scratch);
+        SAFE_FREE(mstate->log_likelihoods);
+        SAFE_FREE(mstate->selection_probs);
+        SAFE_FREE(mstate->sstemp);
+        SAFE_FREE(mstate->ss);
+        SAFE_FREE(mstate->log_distribution_variances);
+        SAFE_FREE(mstate->residual_variance_over_distribution_variances);
+        SAFE_FREE(mstate->z);
+        SAFE_FREE(mstate->variance_per_distribution);
+        SAFE_FREE(mstate->p);
+        SAFE_FREE(mstate->log_p);
+        SAFE_FREE(mstate->snps_per_distribution);
+    }
     
     /* Free MCMCStorage */
-    SAFE_FREE(mstore->sum_snp_effects);
-    SAFE_FREE(mstore->mu_vare_store);
-    SAFE_FREE(mstore->varustore);
-    SAFE_FREE(mstore->varistore);
-    SAFE_FREE(mstore->sum_snps_per_distribution);
-    SAFE_FREE(mstore->sum_variance_per_distribution);
-    SAFE_FREE(mstore->sum_mixture_proportions);
-    SAFE_FREE(mstore->sum_distribution_counts);
-    SAFE_FREE(mstore->sum_category_counts);
+    if (mstore) {
+        SAFE_FREE(mstore->sum_snp_effects);
+        SAFE_FREE(mstore->mu_vare_store);
+        SAFE_FREE(mstore->varustore);
+        SAFE_FREE(mstore->varistore);
+        SAFE_FREE(mstore->sum_snps_per_distribution);
+        SAFE_FREE(mstore->sum_variance_per_distribution);
+        SAFE_FREE(mstore->sum_mixture_proportions);
+        SAFE_FREE(mstore->sum_distribution_counts);
+        SAFE_FREE(mstore->sum_category_counts);
+    }
 }
 
 /* =========================================================================
@@ -460,17 +468,8 @@ int io_write_predictions(IOConfig *ioconfig, double *predicted_values, int nind,
     if(!fp) return ERR_FILE_IO;
     
     for(int i=0; i<nind; i++) {
-        /* trains=0 means Reference/Train (has phenotype) */
-        /* trains=1 means Validation/Test (missing phenotype) */
-        /* Original logic: write prediction if trained? Wait. */
-        /* In BayesRCO original write_dgv: if(trains[i]==0) write pred else NA. */
-        /* This writes predictions ONLY for phenotyped individuals? */
-        /* Usually we want predictions for non-phenotyped (testing). */
-        /* Let's double check original code logic. */
         /* Original: if(gdata->trains[i] == 0) fprintf(fp, val) else fprintf(fp, "NA") */
         /* trains==0 implies 'phenotyped'/training. */
-        /* If we want to support prediction mode, we might want to write all. */
-        /* For now I replicate original behavior for consistency. */
         if(trains[i] == 0) {
             fprintf(fp, "%15.7E\n", predicted_values[i]);
         } else {

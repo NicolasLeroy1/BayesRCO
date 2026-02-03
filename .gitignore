@@ -28,6 +28,11 @@
 *.out
 *.app
 bin/
+clibayesrco/clibayesrco
+*_c
+*_f
+**/test_data.*
+**/results_*.txt
 
 # Build Artifacts
 build/
@@ -48,3 +53,5 @@ fort.21
 .idea/
 *.swp
 *~
+__pycache__/
+*.pyc

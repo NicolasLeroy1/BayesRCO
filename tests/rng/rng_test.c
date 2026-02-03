@@ -1,4 +1,4 @@
-#include "../new_src_c/rng.h"
+#include "rng.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
     s_packed[2] = ((uint64_t)p[2] << 32) | (uint64_t)p[3];
     s_packed[3] = ((uint64_t)p[0] << 32) | (uint64_t)p[1];
 
-    manual_seed(&rs, s_packed);
+    rng_seed(&rs, s_packed);
 
     printf("Uniforms:\n");
     for (int i = 0; i < 10; i++) {

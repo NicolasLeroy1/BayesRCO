@@ -97,7 +97,7 @@ program test_mcmc_utils
 
     print *, "xpx:"
     do j = 1, gdata%nloci
-        print "(F20.16)", gdata%xpx(j)
+        print "(E25.16)", gdata%xpx(j)
     end do
 
     print *, "nannot:"
@@ -109,20 +109,20 @@ program test_mcmc_utils
     call mcmc_start_values_common(config, gdata, mstate)
 
     print *, "yhat:"
-    print "(F20.16)", mstate%yhat
+    print "(E25.16)", mstate%yhat
 
     print *, "vary:"
-    print "(F20.16)", mstate%vary
+    print "(E25.16)", mstate%vary
 
     print *, "g_init:"
     do j = 1, gdata%nloci
-        print "(F20.16)", mstate%g(j)
+        print "(E25.16)", mstate%g(j)
     end do
 
     print *, "p_init:"
     do j = 1, config%ncat
         do i = 1, config%ndist
-            print "(F20.16)", mstate%p(i, j)
+            print "(E25.16)", mstate%p(i, j)
         end do
     end do
 
@@ -131,19 +131,19 @@ program test_mcmc_utils
     call mcmc_iteration_pre_common(config, mstate)
 
     print *, "mu_after_pre:"
-    print "(F20.16)", mstate%mu
+    print "(E25.16)", mstate%mu
 
     print *, "vare_after_pre:"
-    print "(F20.16)", mstate%vare
+    print "(E25.16)", mstate%vare
 
     print *, "log_gp:"
     do i = 2, config%ndist
-        print "(F20.16)", mstate%log_gp(i)
+        print "(E25.16)", mstate%log_gp(i)
     end do
 
     print *, "vare_gp:"
     do i = 2, config%ndist
-        print "(F20.16)", mstate%vare_gp(i)
+        print "(E25.16)", mstate%vare_gp(i)
     end do
 
 end program test_mcmc_utils

@@ -61,7 +61,7 @@ void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             double *log_probs = mstate->log_likelihoods;
             log_probs[0] = mstate->log_p[IDX2(0, j, ncat)];
             for (int kk = 1; kk < ndist; kk++) {
-                double logdetV = log(mstate->genomic_values[kk] * ssq_over_vare + 1.0);
+                double logdetV = log(mstate->distribution_variances[kk] * ssq_over_vare + 1.0);
                 double uhat = rhs / (ssq + mstate->residual_variance_over_distribution_variances[kk]);
                 log_probs[kk] = -0.5 * (logdetV - (rhs * uhat / mstate->variance_residual)) + mstate->log_p[IDX2(kk, j, ncat)];
             }
@@ -82,7 +82,7 @@ void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             } else {
                 cat_effect = sample_snp_effect(dist_idx, rhs, ssq,
                                               mstate->variance_residual,
-                                              mstate->genomic_values, rs);
+                                              mstate->distribution_variances, rs);
                 /* Subtract effect from adjusted phenotype */
                 add_col_scalar(mstate->adjusted_phenotypes, gdata->genotypes,
                                snploc, nt, nloci, -cat_effect);

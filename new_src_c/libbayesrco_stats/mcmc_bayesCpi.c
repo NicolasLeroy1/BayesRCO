@@ -97,7 +97,7 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             
             compute_log_selection_probs(log_probs, rhs, ssq, 
                                        mstate->variance_residual,
-                                       mstate->genomic_values,  /* dist_variances */
+                                       mstate->distribution_variances,  /* dist_variances */
                                        log_mix_for_cat, ndist);
             
             /* Stabilize and normalize probabilities */
@@ -117,7 +117,7 @@ void mcmc_bayesCpi_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *ms
             } else {
                 new_effect = sample_snp_effect(dist_idx, rhs, ssq,
                                               mstate->variance_residual,
-                                              mstate->genomic_values, rs);
+                                              mstate->distribution_variances, rs);
                 /* Subtract effect from adjusted phenotype */
                 add_col_scalar(mstate->adjusted_phenotypes, gdata->genotypes,
                                snploc, nt, nloci, -new_effect);

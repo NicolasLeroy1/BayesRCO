@@ -127,7 +127,7 @@ void mcmc_start_values_common(ModelConfig *config, GenomicData *gdata, MCMCState
     
     /* Initialize distribution variances */
     for (int i = 0; i < ndist; i++) {
-        mstate->genomic_values[i] = mstate->variance_scaling_factors[i] * mstate->variance_genetic;
+        mstate->distribution_variances[i] = mstate->variance_scaling_factors[i] * mstate->variance_genetic;
     }
     
     /* Initialize mixture proportions */
@@ -190,8 +190,8 @@ void mcmc_iteration_pre_common(ModelConfig *config, MCMCState *mstate, prng_stat
     
     /* Precompute log distribution variances and vare/gp ratios */
     for (int i = 1; i < config->num_distributions; i++) {
-        mstate->log_distribution_variances[i] = log(mstate->genomic_values[i]);
-        mstate->residual_variance_over_distribution_variances[i] = mstate->variance_residual / mstate->genomic_values[i];
+        mstate->log_distribution_variances[i] = log(mstate->distribution_variances[i]);
+        mstate->residual_variance_over_distribution_variances[i] = mstate->variance_residual / mstate->distribution_variances[i];
     }
 }
 
@@ -222,11 +222,11 @@ void mcmc_update_hypers_common(int nc, ModelConfig *config, GenomicData *gdata, 
         if (nc == 2) {
             /* BayesCpi: single non-null distribution */
             double denom = (mstate->included > 0) ? (double)mstate->included : 1.0;
-            mstate->genomic_values[1] = mstate->variance_genetic / denom;
-            if (mstate->included == 0) mstate->genomic_values[1] = 0.0;
+            mstate->distribution_variances[1] = mstate->variance_genetic / denom;
+            if (mstate->included == 0) mstate->distribution_variances[1] = 0.0;
         } else {
             for (int i = 0; i < ndist; i++) {
-                mstate->genomic_values[i] = mstate->variance_scaling_factors[i] * mstate->variance_genetic;
+                mstate->distribution_variances[i] = mstate->variance_scaling_factors[i] * mstate->variance_genetic;
             }
         }
         

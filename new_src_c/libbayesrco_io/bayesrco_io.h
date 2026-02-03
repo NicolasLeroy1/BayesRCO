@@ -140,6 +140,12 @@ int io_output_model(IOConfig *ioconfig, GenomicData *gdata, MCMCStorage *mstore)
 int io_write_results(IOConfig *ioconfig, MCMCResults *results, int nloci, int nind);
 
 /**
+ * Get dimensions using IOConfig.
+ */
+int io_get_size(IOConfig *ioconfig, GenomicData *gdata);
+
+
+/**
  * Write allele frequencies to file.
  */
 int io_write_frequencies(IOConfig *ioconfig, GenomicData *gdata);

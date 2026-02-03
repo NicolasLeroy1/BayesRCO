@@ -212,7 +212,7 @@ typedef struct {
     /* Effect estimates */
     double *snp_effects;             /**< SNP effect sizes, size: nloci */
     double *adjusted_phenotypes;     /**< Adjusted phenotypes (yadj), size: nt */
-    double *genomic_values;          /**< Genomic values, size: ndist */
+    double *distribution_variances;  /**< Variance per distribution, size: ndist */
     
     /* Prior parameters */
     double *variance_scaling_factors;/**< Variance scaling per distribution, size: ndist */

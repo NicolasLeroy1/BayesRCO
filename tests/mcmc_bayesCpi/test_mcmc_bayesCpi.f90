@@ -141,7 +141,7 @@ program test_mcmc_bayesCpi
     print *, "gannot_after_init:"
     do j = 1, gdata%nloci
         do i = 1, config%ncat
-            print "(F20.16)", gdata%gannot(j, i)
+            print "(E25.16)", gdata%gannot(j, i)
         end do
     end do
 
@@ -158,7 +158,7 @@ program test_mcmc_bayesCpi
 
     print *, "g_after_kernel:"
     do j = 1, gdata%nloci
-        print "(F20.16)", mstate%g(j)
+        print "(E25.16)", mstate%g(j)
     end do
 
     print *, "included_after_kernel:"

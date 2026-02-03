@@ -330,11 +330,11 @@ int main(int argc, char **argv) {
     
     MCMCResults results;
     memset(&results, 0, sizeof(MCMCResults));
-    results.posterior_means = (double*)calloc(gdata.num_loci, sizeof(double));
-    results.posterior_vars = (double*)calloc(gdata.num_loci, sizeof(double));
-    results.distribution_probs = (double*)calloc(gdata.num_loci * params.num_distributions, sizeof(double));
-    results.category_probs = (double*)calloc(gdata.num_loci * params.num_categories, sizeof(double));
-    results.predicted_values = (double*)calloc(gdata.num_individuals, sizeof(double));
+
+    if (allocate_results(&results, gdata.num_loci, params.num_distributions, params.num_categories, gdata.num_individuals) != SUCCESS) {
+        fprintf(stderr, "Error: Failed to allocate results structure\n");
+        return 1;
+    }
     
     fprintf(config.fp_log, "Starting MCMC...\n");
     
@@ -380,11 +380,7 @@ int main(int argc, char **argv) {
     io_cleanup(&config, &gdata, NULL, NULL);
     free(params.variance_scaling_factors);
     free(params.dirichlet_priors);
-    free(results.posterior_means);
-    free(results.posterior_vars);
-    free(results.distribution_probs);
-    free(results.category_probs);
-    free(results.predicted_values);
+    free_results(&results);
     
     return 0;
 }

@@ -32,13 +32,13 @@ program test_standardize
 
     print *, "Allele Frequencies (freqstore):"
     do j = 1, gdata_local%nloci
-        print "(F20.16)", gdata_local%freqstore(j)
+        print "(E25.16)", gdata_local%freqstore(j)
     end do
 
     print *, "Standardized Genotypes (X):"
     do i = 1, gdata_local%nt
         do j = 1, gdata_local%nloci
-            print "(F20.16)", gdata_local%X(i, j)
+            print "(E25.16)", gdata_local%X(i, j)
         end do
     end do
 

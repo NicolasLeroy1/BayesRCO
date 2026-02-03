@@ -5,6 +5,8 @@ program plink_test
     implicit none
 
     integer :: i, j
+    type(ModelConfig) :: config
+    type(GenomicData) :: gdata
 
     config%inprefix = "test_data"
     config%phenfil = "test_data.fam"
