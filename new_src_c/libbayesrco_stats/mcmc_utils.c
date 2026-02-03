@@ -8,7 +8,6 @@
 
 #include "mcmc_utils.h"
 #include "utils.h"
-#include "mcmc_core_io.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +19,8 @@
 /**
  * Save samples for posterior summary.
  * Accumulates SNP effects, variances, and hyperparameters.
+ * 
+ * Note: File I/O (writing to hyp file) is handled by the calling layer.
  */
 void mcmc_save_samples_common(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MCMCStorage *mstore) {
     int nloci = gdata->num_loci;
@@ -57,24 +58,8 @@ void mcmc_save_samples_common(ModelConfig *config, GenomicData *gdata, MCMCState
         }
     }
     
-    /* Write to hyperparameter file */
-    fprintf(config->fp_hyp, "%10d %10d %15.7E %15.7E ", 
-            mstate->rep, mstate->included, mstate->variance_genetic, mstate->variance_residual);
-    
-    for (int j = 0; j < ncat; j++) {
-        for (int i = 0; i < ndist; i++) {
-            fprintf(config->fp_hyp, "%10d ", mstate->snps_per_distribution[IDX2(i, j, ncat)]);
-        }
-    }
-    for (int j = 0; j < ncat; j++) {
-        for (int i = 0; i < ndist; i++) {
-            fprintf(config->fp_hyp, "%15.7E ", mstate->variance_per_distribution[IDX2(i, j, ncat)]);
-        }
-    }
-    fprintf(config->fp_hyp, "\n");
-    fflush(config->fp_hyp);
-    
-    if (config->beta) output_beta(config, mstate, gdata);
+    /* Note: File I/O (fprintf to config->fp_hyp) removed. 
+     * I/O is handled by the calling layer (libbayesrco_io). */
 }
 
 /**

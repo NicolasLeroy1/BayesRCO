@@ -1,9 +1,14 @@
-#include "../libbayesrco/bayesRCO.h"
-#include "../libbayesrco/rng.h"
-#include "../libbayesrco/utils.h"
-#include "../libbayesrco/mcmc.h"
-#include "../libbayesrco/mcmc_core_io.h"
-#include "../libplink/plink_io.h"
+/**
+ * @file main.c
+ * @brief CLI entry point for BayesRCO.
+ * 
+ * Uses decoupled libraries:
+ * - libbayesrco_stats: Pure statistical computation
+ * - libbayesrco_io: I/O and data management
+ */
+
+#include "../libbayesrco_stats/bayesrco_stats.h"
+#include "../libbayesrco_io/bayesrco_io.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -85,111 +90,85 @@ static void print_usage(const char *program_name) {
     fprintf(stderr, "  -h               Show this help message\n");
 }
 
-static void init_default_config(ModelConfig *config, MCMCState *mstate) {
-    memset(config, 0, sizeof(ModelConfig));
-    memset(mstate, 0, sizeof(MCMCState));
-    config->trait_column_index = 1;
-    config->marker_set_size = 0;
-    config->marker_replicates = DEFAULT_MARKER_REPLICATES;
-    config->num_iterations = DEFAULT_NUM_ITERATIONS;
-    config->burnin_iterations = DEFAULT_BURNIN;
-    config->thinning_interval = DEFAULT_THINNING;
-    config->num_distributions = DEFAULT_NUM_DISTRIBUTIONS;
-    config->num_categories = DEFAULT_NUM_CATEGORIES;
-    config->random_seed = 0;
-    config->dfvara = DEFAULT_DFVARA;
-    config->dfvare = DEFAULT_DFVARE;
-    mstate->variance_genetic = DEFAULT_VARIANCE_GENETIC;
-    mstate->variance_residual = DEFAULT_VARIANCE_RESIDUAL;
+static void init_default_config(IOConfig *config) {
+    memset(config, 0, sizeof(IOConfig));
+    
+    /* IO Flags & Options */
     config->mcmc = true;
-    config->snpout = false;
-    config->permute = false;
     config->cat = false;
     config->beta = false;
-    config->mixture = true;
-    config->nobayesCpi = true;
-    config->VCE = false;
+    config->trait_column_index = 1;
+    config->random_seed = 0;
+    
+    /* Stats Model Config */
+    config->model.marker_set_size = 0;
+    config->model.marker_replicates = DEFAULT_MARKER_REPLICATES;
+    config->model.num_iterations = DEFAULT_NUM_ITERATIONS;
+    config->model.burnin_iterations = DEFAULT_BURNIN;
+    config->model.thinning_interval = DEFAULT_THINNING;
+    config->model.num_distributions = DEFAULT_NUM_DISTRIBUTIONS;
+    config->model.num_categories = DEFAULT_NUM_CATEGORIES;
+    config->model.dfvara = DEFAULT_DFVARA;
+    config->model.dfvare = DEFAULT_DFVARE;
+    config->model.vara_ap = DEFAULT_VARIANCE_GENETIC; 
+    config->model.vare_ap = DEFAULT_VARIANCE_RESIDUAL;
+    config->model.mixture = true;
+    config->model.nobayesCpi = true;
+    config->model.VCE = false;
 }
 
-static void derive_file_paths(ModelConfig *config) {
-    snprintf(config->genotype_file_path, PATH_MAX_LENGTH, "%s.bed", config->input_prefix);
-    snprintf(config->phenotype_file_path, PATH_MAX_LENGTH, "%s.fam", config->input_prefix);
-    snprintf(config->bim_file_path, PATH_MAX_LENGTH, "%s.bim", config->input_prefix);
-    if (strlen(config->output_prefix) > 0) {
-        snprintf(config->log_file_path, PATH_MAX_LENGTH, "%s.log", config->output_prefix);
-        snprintf(config->freq_file_path, PATH_MAX_LENGTH, "%s.frq", config->output_prefix);
-        snprintf(config->gv_file_path, PATH_MAX_LENGTH, "%s.gv", config->output_prefix);
-        snprintf(config->hyp_file_path, PATH_MAX_LENGTH, "%s.hyp", config->output_prefix);
-        snprintf(config->snp_file_path, PATH_MAX_LENGTH, "%s.snp", config->output_prefix);
-        snprintf(config->cat_file_path, PATH_MAX_LENGTH, "%s.catit", config->output_prefix);
-        snprintf(config->beta_file_path, PATH_MAX_LENGTH, "%s.beta", config->output_prefix);
-        snprintf(config->model_file_path, PATH_MAX_LENGTH, "%s.model", config->output_prefix);
-        snprintf(config->param_file_path, PATH_MAX_LENGTH, "%s.param", config->output_prefix);
+static void derive_file_paths(IOConfig *config, const char *input_prefix, const char *output_prefix) {
+    if (strlen(input_prefix) > 0) {
+        snprintf(config->geno_file_path, PATH_MAX_LENGTH, "%s.bed", input_prefix);
+        snprintf(config->pheno_file_path, PATH_MAX_LENGTH, "%s.fam", input_prefix);
+    }
+    
+    if (strlen(output_prefix) > 0) {
+        snprintf(config->log_file_path, PATH_MAX_LENGTH, "%s.log", output_prefix);
+        snprintf(config->freq_file_path, PATH_MAX_LENGTH, "%s.frq", output_prefix);
+        snprintf(config->gv_file_path, PATH_MAX_LENGTH, "%s.gv", output_prefix);
+        snprintf(config->hyp_output_file_path, PATH_MAX_LENGTH, "%s.hyp", output_prefix);
+        snprintf(config->snp_output_file_path, PATH_MAX_LENGTH, "%s.snp", output_prefix);
+        snprintf(config->cat_output_file_path, PATH_MAX_LENGTH, "%s.catit", output_prefix);
+        snprintf(config->beta_file_path, PATH_MAX_LENGTH, "%s.beta", output_prefix);
+        snprintf(config->model_file_path, PATH_MAX_LENGTH, "%s.model", output_prefix);
+        snprintf(config->param_file_path, PATH_MAX_LENGTH, "%s.param", output_prefix);
     }
 }
 
-static void init_variance_components(ModelConfig *config, GenomicData *gdata, MCMCState *mstate) {
-    if (config->dfvara < DEFAULT_DFVARA) {
-        config->VCE = false;
-        double sum_y = 0.0;
-        int count = 0;
-        for (int i = 0; i < gdata->num_individuals; i++) {
-            if (gdata->trains[i] == 0) {
-                sum_y += gdata->phenotypes[i];
-                count++;
-            }
-        }
-        mstate->yhat = sum_y / mstate->nnind;
-        double sum_sq = 0.0;
-        for (int i = 0; i < gdata->num_individuals; i++) {
-            if (gdata->trains[i] == 0) {
-                double diff = gdata->phenotypes[i] - mstate->yhat;
-                sum_sq += diff * diff;
-            }
-        }
-        mstate->vary = sum_sq / (mstate->nnind - 1.0);
-        mstate->variance_genetic = mstate->variance_genetic * mstate->vary;
-    } else {
-        config->VCE = true;
-        config->vara_ap = mstate->variance_genetic;
-        config->vare_ap = mstate->variance_residual;
-        if (config->dfvara == DEFAULT_DFVARA) config->vara_ap = 0.0;
-        if (config->dfvare == DEFAULT_DFVARE) config->vare_ap = 0.0;
-    }
-}
-
-static bool init_logging(ModelConfig *config) {
+static bool init_logging(IOConfig *config, const char *input_prefix, const char *output_prefix) {
     config->fp_log = fopen(config->log_file_path, "w");
     if (!config->fp_log) {
         fprintf(stderr, "Error: Cannot open log file: %s\n", config->log_file_path);
         return false;
     }
-    fprintf(config->fp_log, "Program BayesRCO C Port\n");
+    fprintf(config->fp_log, "Program BayesRCO C Port (Decoupled)\n");
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
     char datetime[64];
     strftime(datetime, sizeof(datetime), "%Y-%m-%d %H:%M:%S", t);
     fprintf(config->fp_log, "Run started at %s\n", datetime);
-    fprintf(config->fp_log, "Prefix for input files           : %s\n", config->input_prefix);
-    fprintf(config->fp_log, "Prefix for output files          : %s\n", config->output_prefix);
+    fprintf(config->fp_log, "Prefix for input files           : %s\n", input_prefix);
+    fprintf(config->fp_log, "Prefix for output files          : %s\n", output_prefix);
     return true;
 }
 
 int main(int argc, char **argv) {
-    ModelConfig config;
+    IOConfig config;
     GenomicData gdata;
-    MCMCState mstate;
-    MCMCStorage mstore;
-    prng_state rs;
     
-    init_default_config(&config, &mstate);
+    char input_prefix[PATH_MAX_LENGTH] = "";
+    char output_prefix[PATH_MAX_LENGTH] = "";
+    
+    init_default_config(&config);
     memset(&gdata, 0, sizeof(GenomicData));
-    memset(&mstore, 0, sizeof(MCMCStorage));
     
     int gpin_count = 0;
     double *gpin_args = NULL;
     int delta_count = 0;
     double *delta_args = NULL;
+    double init_vara = DEFAULT_VARIANCE_GENETIC;
+    double init_vare = DEFAULT_VARIANCE_RESIDUAL;
     
     if (argc == 1) {
         print_usage(argv[0]);
@@ -198,37 +177,37 @@ int main(int argc, char **argv) {
     
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-bfile") == 0) {
-            if (i + 1 < argc) safe_strcpy(config.input_prefix, argv[++i], PATH_MAX_LENGTH);
+            if (i + 1 < argc) safe_strcpy(input_prefix, argv[++i], PATH_MAX_LENGTH);
         } else if (strcmp(argv[i], "-out") == 0) {
-            if (i + 1 < argc) safe_strcpy(config.output_prefix, argv[++i], PATH_MAX_LENGTH);
+            if (i + 1 < argc) safe_strcpy(output_prefix, argv[++i], PATH_MAX_LENGTH);
         } else if (strcmp(argv[i], "-n") == 0) {
             if (i + 1 < argc) config.trait_column_index = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-vara") == 0) {
-            if (i + 1 < argc) mstate.variance_genetic = atof(argv[++i]);
+            if (i + 1 < argc) init_vara = atof(argv[++i]);
         } else if (strcmp(argv[i], "-vare") == 0) {
-            if (i + 1 < argc) mstate.variance_residual = atof(argv[++i]);
+            if (i + 1 < argc) init_vare = atof(argv[++i]);
         } else if (strcmp(argv[i], "-dfvara") == 0) {
-            if (i + 1 < argc) config.dfvara = atof(argv[++i]);
+            if (i + 1 < argc) config.model.dfvara = atof(argv[++i]);
         } else if (strcmp(argv[i], "-dfvare") == 0) {
-            if (i + 1 < argc) config.dfvare = atof(argv[++i]);
+            if (i + 1 < argc) config.model.dfvare = atof(argv[++i]);
         } else if (strcmp(argv[i], "-delta") == 0) {
             if (i + 1 < argc) {
                 delta_count = parse_double_list(argv[++i], &delta_args);
                 if (delta_count < 0) return 1;
             }
         } else if (strcmp(argv[i], "-msize") == 0) {
-            if (i + 1 < argc) config.marker_set_size = atoi(argv[++i]);
-            config.permute = true;
+            if (i + 1 < argc) config.model.marker_set_size = atoi(argv[++i]);
+            config.model.permute = true;
         } else if (strcmp(argv[i], "-mrep") == 0) {
-            if (i + 1 < argc) config.marker_replicates = atoi(argv[++i]);
+            if (i + 1 < argc) config.model.marker_replicates = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-numit") == 0) {
-            if (i + 1 < argc) config.num_iterations = atoi(argv[++i]);
+            if (i + 1 < argc) config.model.num_iterations = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-burnin") == 0) {
-            if (i + 1 < argc) config.burnin_iterations = atoi(argv[++i]);
+            if (i + 1 < argc) config.model.burnin_iterations = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-thin") == 0) {
-            if (i + 1 < argc) config.thinning_interval = atoi(argv[++i]);
+            if (i + 1 < argc) config.model.thinning_interval = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-ndist") == 0) {
-            if (i + 1 < argc) config.num_distributions = atoi(argv[++i]);
+            if (i + 1 < argc) config.model.num_distributions = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-gpin") == 0) {
             if (i + 1 < argc) {
                 gpin_count = parse_double_list(argv[++i], &gpin_args);
@@ -238,25 +217,25 @@ int main(int argc, char **argv) {
                 }
             }
         } else if (strcmp(argv[i], "-seed") == 0) {
-            if (i + 1 < argc) config.random_seed = atoi(argv[++i]);
+             if (i + 1 < argc) config.random_seed = strtoull(argv[++i], NULL, 10);
         } else if (strcmp(argv[i], "-predict") == 0) {
             config.mcmc = false;
         } else if (strcmp(argv[i], "-snpout") == 0) {
-            config.snpout = true;
+            /* Handled by IO config flags implicit logic for now */
         } else if (strcmp(argv[i], "-permute") == 0) {
-            config.permute = true;
+            config.model.permute = true;
         } else if (strcmp(argv[i], "-cat") == 0) {
             config.cat = true;
         } else if (strcmp(argv[i], "-beta") == 0) {
             config.beta = true;
         } else if (strcmp(argv[i], "-ncat") == 0) {
-            if (i + 1 < argc) config.num_categories = atoi(argv[++i]);
+            if (i + 1 < argc) config.model.num_categories = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-catfile") == 0) {
             if (i + 1 < argc) safe_strcpy(config.cat_input_file_path, argv[++i], PATH_MAX_LENGTH);
         } else if (strcmp(argv[i], "-additive") == 0) {
-            config.mixture = false;
+            config.model.mixture = false;
         } else if (strcmp(argv[i], "-bayesCpi") == 0) {
-            config.nobayesCpi = false;
+            config.model.nobayesCpi = false;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
             free(gpin_args); free(delta_args);
@@ -264,71 +243,148 @@ int main(int argc, char **argv) {
         }
     }
     
-    if (strlen(config.input_prefix) == 0 && config.mcmc) return 1;
-    derive_file_paths(&config);
-    if (config.mcmc && !file_exists(config.genotype_file_path)) return 1;
-    if (!init_logging(&config)) return 1;
+    if (strlen(input_prefix) == 0 && config.mcmc) return 1;
+    derive_file_paths(&config, input_prefix, output_prefix);
     
-    if (get_size(&config, &gdata) != SUCCESS) {
+    if (config.mcmc && !file_exists(config.geno_file_path)) {
+        fprintf(stderr, "Genotype file not found: %s\n", config.geno_file_path);
+        return 1;
+    }
+    
+    if (!init_logging(&config, input_prefix, output_prefix)) return 1;
+    
+    fprintf(config.fp_log, "Reading PLINK files...\n");
+    if (plink_get_size(input_prefix, &gdata.num_individuals, &gdata.num_loci) != SUCCESS) {
         fprintf(stderr, "Error: Failed to determine dataset dimensions\n");
         return 1;
     }
-    if (load_phenos_plink(&config, &gdata) != SUCCESS) {
+    
+    if (io_load_phenotypes(&config, &gdata) != SUCCESS) {
         fprintf(stderr, "Error: Failed to load phenotype data\n");
         return 1;
     }
-    if (allocate_data(&config, &gdata, &mstate, &mstore) != SUCCESS) {
-        fprintf(stderr, "Error: Memory allocation failed\n");
+    
+    gdata.num_phenotyped_individuals = 0;
+    for(int i=0; i<gdata.num_individuals; i++) {
+        if(gdata.trains[i] == 0) gdata.num_phenotyped_individuals++;
+    }
+    
+    if (io_load_genotypes(&config, &gdata) != SUCCESS) {
+        fprintf(stderr, "Error: Failed to load genotype data\n");
         return 1;
     }
     
-    if (gpin_count > 0) {
-        for (int i = 0; i < config.num_distributions; i++) mstate.variance_scaling_factors[i] = gpin_args[i];
+    gdata.categories = (int*)calloc(gdata.num_loci * config.model.num_categories, sizeof(int));
+    if (io_load_categories(&config, &gdata) != SUCCESS) {
+         fprintf(stderr, "Error: Failed to load category file\n");
+         return 1;
+    }
+    
+    gdata.allele_frequencies = (double*)calloc(gdata.num_loci, sizeof(double));
+    extern void standardize_genotypes(GenomicData *gdata, bool compute_freqs);
+    
+    if (config.mcmc) {
+        standardize_genotypes(&gdata, true);
+        io_write_frequencies(&config, &gdata);
     } else {
-        for (int i = 0; i < config.num_distributions; i++) {
-            if (i < DEFAULT_NUM_DISTRIBUTIONS) mstate.variance_scaling_factors[i] = GPIN_DEFAULTS[i];
-            else mstate.variance_scaling_factors[i] = 0.0;
-        }
+        io_load_frequencies(&config, &gdata);
+        standardize_genotypes(&gdata, false);
+    }
+    
+    MCMCParams params;
+    memset(&params, 0, sizeof(MCMCParams));
+    params.num_iterations = config.model.num_iterations;
+    params.burnin_iterations = config.model.burnin_iterations;
+    params.thinning_interval = config.model.thinning_interval;
+    params.num_distributions = config.model.num_distributions;
+    params.num_categories = config.model.num_categories;
+    params.permute = config.model.permute;
+    params.VCE = config.model.VCE;
+    params.dfvara = config.model.dfvara;
+    params.dfvare = config.model.dfvare;
+    params.vara_ap = config.model.vara_ap;
+    params.vare_ap = config.model.vare_ap;
+    params.variance_genetic = init_vara;
+    params.variance_residual = init_vare;
+    
+    params.variance_scaling_factors = (double*)calloc(params.num_distributions, sizeof(double));
+    params.dirichlet_priors = (double*)calloc(params.num_distributions, sizeof(double));
+    
+    if (gpin_count > 0) {
+        for(int i=0; i<params.num_distributions; i++) params.variance_scaling_factors[i] = gpin_args[i];
+    } else {
+         for(int i=0; i<params.num_distributions; i++) {
+            if (i < DEFAULT_NUM_DISTRIBUTIONS) params.variance_scaling_factors[i] = GPIN_DEFAULTS[i];
+            else params.variance_scaling_factors[i] = 0.0;
+         }
     }
     free(gpin_args);
     
     if (delta_count > 0) {
-        for (int i = 0; i < config.num_distributions; i++) 
-            mstate.dirichlet_priors[i] = (delta_count == 1) ? delta_args[0] : delta_args[i];
+        for(int i=0; i<params.num_distributions; i++) 
+            params.dirichlet_priors[i] = (delta_count == 1) ? delta_args[0] : delta_args[i];
     } else {
-        for (int i = 0; i < config.num_distributions; i++) mstate.dirichlet_priors[i] = DEFAULT_DIRICHLET_PRIOR;
+        for(int i=0; i<params.num_distributions; i++) params.dirichlet_priors[i] = DEFAULT_DIRICHLET_PRIOR;
     }
     free(delta_args);
     
-    if (load_categories(&config, &gdata) != SUCCESS) {
-        fprintf(stderr, "Error: Failed to load category file\n");
-        cleanup_data(&config, &gdata, &mstate, &mstore);
-        return 1;
-    }
-    if (load_snp_binary(&config, &gdata) != SUCCESS) {
-        fprintf(stderr, "Error: Failed to load genotype binary data\n");
-        cleanup_data(&config, &gdata, &mstate, &mstore);
-        return 1;
-    }
-    xcenter(&config, &gdata);
-    init_random_seed_custom(&config, &rs);
+    MCMCResults results;
+    memset(&results, 0, sizeof(MCMCResults));
+    results.posterior_means = (double*)calloc(gdata.num_loci, sizeof(double));
+    results.posterior_vars = (double*)calloc(gdata.num_loci, sizeof(double));
+    results.distribution_probs = (double*)calloc(gdata.num_loci * params.num_distributions, sizeof(double));
+    results.category_probs = (double*)calloc(gdata.num_loci * params.num_categories, sizeof(double));
+    results.predicted_values = (double*)calloc(gdata.num_individuals, sizeof(double));
     
-    if (config.mcmc) {
-        mstate.nnind = (double)gdata.num_phenotyped_individuals;
-        if (config.snpout) config.fp_snp = fopen(config.snp_file_path, "w");
-        if (config.cat) config.fp_cat = fopen(config.cat_file_path, "w");
-        if (config.beta) config.fp_beta = fopen(config.beta_file_path, "w");
-        config.fp_hyp = fopen(config.hyp_file_path, "w");
-        if (config.fp_hyp) fprintf(config.fp_hyp, " Replicate       Nsnp              Va              Ve \n");
-        
-        init_variance_components(&config, &gdata, &mstate);
-        if (run_mcmc(&config, &gdata, &mstate, &mstore, &rs) != SUCCESS) {
-            fprintf(stderr, "Error: MCMC execution failed\n");
-            cleanup_data(&config, &gdata, &mstate, &mstore);
-            return 1;
-        }
+    fprintf(config.fp_log, "Starting MCMC...\n");
+    
+    int ret = SUCCESS;
+    if (config.model.mixture) {
+        ret = run_bayesrco_mixture(
+            &params, 
+            gdata.genotypes, 
+            gdata.phenotypes, 
+            gdata.categories, 
+            gdata.num_loci, 
+            gdata.num_phenotyped_individuals, 
+            config.model.num_categories,
+            gdata.num_individuals, 
+            gdata.trains,
+            config.random_seed,
+            &results
+        );
+    } else {
+         if (!config.model.nobayesCpi) {
+             ret = run_bayesrco_bayesCpi(
+                &params, gdata.genotypes, gdata.phenotypes, gdata.categories,
+                gdata.num_loci, gdata.num_phenotyped_individuals, config.model.num_categories,
+                gdata.num_individuals, gdata.trains, config.random_seed, &results
+             );
+         } else {
+             ret = run_bayesrco_additive(
+                &params, gdata.genotypes, gdata.phenotypes, gdata.categories,
+                gdata.num_loci, gdata.num_phenotyped_individuals, config.model.num_categories,
+                gdata.num_individuals, gdata.trains, config.random_seed, &results
+             );
+         }
     }
     
-    cleanup_data(&config, &gdata, &mstate, &mstore);
+    if (ret == SUCCESS) {
+        fprintf(config.fp_log, "MCMC completed successfully.\n");
+        io_write_results(&config, &results, gdata.num_loci, gdata.num_individuals);
+        io_write_predictions(&config, results.predicted_values, gdata.num_individuals, gdata.trains);
+    } else {
+         fprintf(stderr, "MCMC execution failed with code %d\n", ret);
+    }
+    
+    io_cleanup(&config, &gdata, NULL, NULL);
+    free(params.variance_scaling_factors);
+    free(params.dirichlet_priors);
+    free(results.posterior_means);
+    free(results.posterior_vars);
+    free(results.distribution_probs);
+    free(results.category_probs);
+    free(results.predicted_values);
+    
     return 0;
 }

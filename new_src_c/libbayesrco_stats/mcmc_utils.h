@@ -1,7 +1,8 @@
 #ifndef MCMC_UTILS_H
 #define MCMC_UTILS_H
 
-#include "bayesRCO.h"
+#include "bayesrco_types.h"
+#include "rng.h"
 #include "mcmc_sampling.h"
 
 // Common MCMC utility functions

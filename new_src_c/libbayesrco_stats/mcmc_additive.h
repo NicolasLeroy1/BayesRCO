@@ -1,7 +1,8 @@
 #ifndef MCMC_ADDITIVE_H
 #define MCMC_ADDITIVE_H
 
-#include "bayesRCO.h"
+#include "bayesrco_types.h"
+#include "rng.h"
 
 // Additive model MCMC functions
 void mcmc_additive_kernel(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MCMCStorage *mstore, prng_state *rs);

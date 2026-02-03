@@ -1,6 +1,7 @@
+
 CC = gcc
-CFLAGS = -O2 -Wall
-LDFLAGS = -L../libbayesrco -L../libplink -lbayesrco -lplink -lm
+CFLAGS = -O2 -Wall -I../libbayesrco_stats -I../libbayesrco_io
+LDFLAGS = -L../libbayesrco_stats -L../libbayesrco_io -lbayesrco_io -lbayesrco_stats -lm
 
 TARGET = clibayesrco
 SOURCES = main.c

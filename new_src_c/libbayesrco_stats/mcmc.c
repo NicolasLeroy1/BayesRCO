@@ -4,7 +4,7 @@
 #include "mcmc_additive.h"
 #include "mcmc_bayesCpi.h"
 #include "utils.h"
-#include "mcmc_core_io.h"
+
 
 // -------------------------------------------------------------------------
 // Main Driver
@@ -120,10 +120,13 @@ int run_mcmc(ModelConfig *config, GenomicData *gdata, MCMCState *mstate, MCMCSto
          }
     }
 
-    output_model(config, gdata, mstore);
+    /* Update mu from posterior mean for DGV computation */
     mstate->mu = mstore->mu_vare_store[0];
+    
+    /* Compute DGV (this is pure computation, not I/O) */
     compute_dgv(gdata, mstate, mstore);
-    write_dgv(config, gdata);
+
+    /* Note: output_model() and write_dgv() removed - I/O handled by caller */
 
     return SUCCESS;
 }

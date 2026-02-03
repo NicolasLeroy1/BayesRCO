@@ -1,11 +1,11 @@
 CC = gcc
-CFLAGS = -O2 -Wall -fPIC
+CFLAGS = -O2 -Wall -fPIC -I../libbayesrco_stats
 AR = ar
 ARFLAGS = rcs
 
-SOURCES = mcmc.c mcmc_additive.c mcmc_bayesCpi.c mcmc_mixture.c mcmc_sampling.c mcmc_utils.c mcmc_core_io.c rng.c utils.c
+SOURCES = plink_io.c mcmc_core_io.c
 OBJECTS = $(SOURCES:.c=.o)
-TARGET = libbayesrco.a
+TARGET = libbayesrco_io.a
 
 all: $(TARGET)
 

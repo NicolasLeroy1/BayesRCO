@@ -1,6 +1,9 @@
 /**
  * @file utils.c
  * @brief General utility functions for data processing and computation.
+ * 
+ * This file is part of libbayesrco_stats - pure statistical computation only.
+ * No file I/O is performed here.
  */
 
 #include "utils.h"
@@ -104,21 +107,25 @@ void compute_residuals(GenomicData *gdata, MCMCState *mstate) {
 }
 
 /**
- * Center and standardize genotypes.
+ * Standardize genotypes using given allele frequencies.
  * 
  * Transforms genotypes to have mean 0 and variance proportional to 2pq.
  * Missing values (>2) are imputed with the mean genotype.
  * 
- * @param config  Model configuration
- * @param gdata   Genomic data (modified in place)
+ * This is a pure computation function - allele frequencies should be:
+ * - Computed here if provided_freqs is NULL
+ * - Used from provided_freqs if not NULL (prediction mode)
+ * 
+ * @param gdata          Genomic data (modified in place)
+ * @param compute_freqs  If true, compute allele frequencies from data
+ *                       If false, use pre-existing frequencies in gdata->allele_frequencies
  */
-void xcenter(ModelConfig *config, GenomicData *gdata) {
+void standardize_genotypes(GenomicData *gdata, bool compute_freqs) {
     int nloci = gdata->num_loci;
     int nt = gdata->num_phenotyped_individuals;
     double q, qtest;
-    FILE *fp;
     
-    if (config->mcmc) {
+    if (compute_freqs) {
         /* Compute allele frequencies and standardize */
         for (int j = 0; j < nloci; j++) {
             double sum = 0.0;
@@ -151,27 +158,8 @@ void xcenter(ModelConfig *config, GenomicData *gdata) {
             }
             gdata->allele_frequencies[j] = q;
         }
-        
-        /* Write frequencies to file */
-        fp = fopen(config->freq_file_path, "w");
-        if (fp) {
-            for (int j = 0; j < nloci; j++) {
-                fprintf(fp, "%10.6f\n", gdata->allele_frequencies[j]);
-            }
-            fclose(fp);
-        }
-        
     } else {
-        /* Prediction mode: read frequencies from file */
-        fp = fopen(config->freq_file_path, "r");
-        if (fp) {
-            for (int j = 0; j < nloci; j++) {
-                if (fscanf(fp, "%lf", &gdata->allele_frequencies[j]) != 1) break;
-            }
-            fclose(fp);
-        }
-        
-        /* Standardize using stored frequencies */
+        /* Standardize using stored frequencies (prediction mode) */
         for (int j = 0; j < nloci; j++) {
             q = gdata->allele_frequencies[j];
             if (q == 1.0 || q == 0.0) {

@@ -8,7 +8,8 @@
  * This module contains core math and sampling routines used across all MCMC kernels.
  */
 
-#include "bayesRCO.h"
+#include "bayesrco_types.h"
+#include "rng.h"
 #include "rng.h"
 
 /* =========================================================================

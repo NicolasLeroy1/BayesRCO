@@ -1,4 +1,4 @@
-SUBDIRS = libbayesrco libplink clibayesrco
+SUBDIRS = libbayesrco_stats libbayesrco_io clibayesrco
 
 all:
 	@for dir in $(SUBDIRS); do \
