@@ -1,0 +1,11 @@
+PKG_CPPFLAGS = -I../../new_src_c/libbayesrco_stats
+PKG_LIBS = -L../../new_src_c/libbayesrco_stats -lbayesrco_stats -lm
+
+# Include all source files from libbayesrco_stats to ensure they are available
+# since we are linking statically for ease of use in the R package context.
+# Alternatively, we could point to the .a file.
+
+$(SHLIB): ../../new_src_c/libbayesrco_stats/libbayesrco_stats.a
+
+../../new_src_c/libbayesrco_stats/libbayesrco_stats.a:
+	$(MAKE) -C ../../new_src_c/libbayesrco_stats

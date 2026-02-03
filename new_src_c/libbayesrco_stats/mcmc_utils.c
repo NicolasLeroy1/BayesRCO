@@ -145,9 +145,8 @@ void mcmc_start_values_common(ModelConfig *config, GenomicData *gdata, MCMCState
     }
     
     /* Initialize SNP effects */
-    double g_val = sqrt(mstate->variance_genetic / (0.5 * (double)nloci));
     for (int i = 0; i < nloci; i++) {
-        mstate->snp_effects[i] = g_val;
+        mstate->snp_effects[i] = 0.0;
     }
     
     /* Initialize permutation vector */

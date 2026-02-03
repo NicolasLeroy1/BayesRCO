@@ -1,0 +1,12 @@
+Package: Rcbayesrco
+Type: Package
+Title: R Interface for BayesRCO
+Version: 0.1.0
+Author: BayesRCO Team
+Maintainer: BayesRCO Team <team@example.com>
+Description: Efficient C implementation of BayesRCO models (mixture, additive, BayesCpi) with R wrappers.
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+Imports: methods
+R6: false

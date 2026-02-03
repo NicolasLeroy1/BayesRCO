@@ -87,12 +87,13 @@ static int allocate_internal_data(const MCMCParams *params, int nloci, int nt, i
     gdata->permannot = (int*)calloc(ncat, sizeof(int));
     gdata->atemp = (int*)calloc(ncat, sizeof(int));
     gdata->predicted_values = (double*)calloc(nind, sizeof(double));
+    gdata->included_loci = (double*)calloc(nloci, sizeof(double));
     
     if (!gdata->snp_correlations || !gdata->annotations_per_locus || 
         !gdata->current_category || !gdata->current_distribution ||
         !gdata->distribution_per_category || !gdata->effects_per_category ||
         !gdata->permvec || !gdata->permannot || !gdata->atemp ||
-        !gdata->predicted_values) {
+        !gdata->predicted_values || !gdata->included_loci) {
         return ERR_MEMORY;
     }
     
@@ -167,6 +168,7 @@ static void free_internal_data(GenomicData *gdata, MCMCState *mstate, MCMCStorag
     if (gdata->permannot) free(gdata->permannot);
     if (gdata->atemp) free(gdata->atemp);
     if (gdata->predicted_values) free(gdata->predicted_values);
+    if (gdata->included_loci) free(gdata->included_loci);
     
     /* Free MCMCState */
     if (mstate->snp_effects) free(mstate->snp_effects);

@@ -1,0 +1,4 @@
+useDynLib(Rcbayesrco, .registration = TRUE)
+export(run_bayesrco_mixture)
+export(run_bayesrco_additive)
+export(run_bayesrco_bayesCpi)
