@@ -49,7 +49,7 @@ int io_allocate_data(IOConfig *ioconfig, GenomicData *gdata, MCMCState *mstate, 
     SAFE_CALLOC(gdata->predicted_values, nind, double);
     
     SAFE_CALLOC(mstate->variance_scaling_factors, ndist, double);
-    SAFE_CALLOC(mstate->genomic_values, ndist, double);
+    SAFE_CALLOC(mstate->distribution_variances, ndist, double);
     
     /* Flattened state matrices (ndist * ncat) */
     SAFE_CALLOC(mstate->p, ndist * ncat, double);
@@ -348,7 +348,7 @@ void io_cleanup(IOConfig *ioconfig, GenomicData *gdata, MCMCState *mstate, MCMCS
     
     /* Free MCMCState */
     if (mstate) {
-        SAFE_FREE(mstate->genomic_values);
+        SAFE_FREE(mstate->distribution_variances);
         SAFE_FREE(mstate->variance_scaling_factors);
         SAFE_FREE(mstate->dirichlet_priors);
         SAFE_FREE(mstate->snp_effects);
